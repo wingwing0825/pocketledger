@@ -214,8 +214,8 @@
       box-shadow: var(--shadow-floating);
       display: flex; justify-content: space-around;
       padding: 8px;
-      align-items: flex-end; /* 讓突起的按鈕底部對齊 */
-      overflow: visible; /* 允許按鈕突出去 */
+      align-items: flex-end;
+      overflow: visible;
     }
     .tab {
       flex: 1; border-radius: 20px; padding: 8px 0;
@@ -227,20 +227,19 @@
     .tab div { margin-top: 2px; }
     .tab.active { color: var(--primary); background: var(--primary-light); }
 
-    /* ★ 修正: 突起的大按鈕樣式 */
     .tab.add-btn {
       width: 58px; height: 58px; flex: 0 0 auto;
       background: var(--primary);
       color: white;
       border-radius: 50%;
-      margin-bottom: 12px; /* 向上推 */
+      margin-bottom: 12px;
       box-shadow: 0 8px 20px rgba(79, 70, 229, 0.4);
-      border: 4px solid #f3f4f6; /* 與背景同色，製造鏤空感 */
+      border: 4px solid #f3f4f6;
       display: flex; justify-content: center; align-items: center;
       position: relative; top: -10px;
     }
     .tab.add-btn.active {
-      background: var(--primary); /* 點擊後保持顏色 */
+      background: var(--primary); 
       transform: scale(0.95);
     }
     .tab.add-btn div { margin: 0; line-height: 1; }
@@ -340,6 +339,21 @@
     
     /* Img */
     .item .img { width: 100%; border-radius: 12px; margin-top: 12px; border: 1px solid var(--line); }
+    
+    /* ★ 新增: 收據摺疊樣式 */
+    details.receipt-toggle {
+      margin-top: 8px;
+      font-size: 13px;
+      color: var(--primary);
+    }
+    details.receipt-toggle summary {
+      cursor: pointer;
+      list-style: none;
+      font-weight: 600;
+      opacity: 0.9;
+    }
+    details.receipt-toggle summary::-webkit-details-marker { display: none; }
+    details.receipt-toggle[open] summary { margin-bottom: 8px; color: var(--text-muted); }
 
     /* Shopping List Styles */
     .shop-card {
@@ -1708,7 +1722,7 @@ function renderAdd(){
       </div>
 
       <div id="orderBlock" style="display:none; padding:12px; background:rgba(255,255,255,0.5); border-radius:12px; margin-top:12px;">
-         <div class="field"><label>到期日</label><input type="date" id="f_orderDue"></div>
+         <div class="field"><label>到貨日</label><input type="date" id="f_orderDue"></div>
          <div class="field"><label>交收</label><select id="f_orderDelivery"><option value="面交">面交</option><option value="快遞">快遞</option></select></div>
          <div class="hr"></div>
          <div class="grid3" style="grid-template-columns:1fr 1fr; margin-top:8px;">
@@ -2294,7 +2308,12 @@ function expenseCard(e){
         <div class="amt" style="font-size:18px; flex-shrink:0;">${money(e.amount)}</div>
       </div>
 
-      ${e.receiptImage?`<img class="img" src="${e.receiptImage}" alt="receipt" data-zoom="1">`:""}
+      ${e.receiptImage ? `
+        <details class="receipt-toggle">
+           <summary>🧾 查看收據圖片</summary>
+           <img class="img" src="${e.receiptImage}" alt="receipt" data-zoom="1" style="margin-top:0">
+        </details>
+      ` : ""}
       
       <div class="actions">
         <button class="btn small" data-editexp="${e.id}">編輯</button>

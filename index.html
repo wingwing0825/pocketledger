@@ -180,7 +180,7 @@
     .dow div { text-align: center; font-size: 11px; font-weight: 600; color: var(--text-light); }
     
     .day {
-      aspect-ratio: 1; height: auto; min-height: 50px;
+      aspect-ratio: 1; height: auto;
       border-radius: 14px; border: 1px solid transparent;
       background: rgba(255,255,255,0.4);
       display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
@@ -214,6 +214,8 @@
       box-shadow: var(--shadow-floating);
       display: flex; justify-content: space-around;
       padding: 8px;
+      align-items: flex-end; /* 讓突起的按鈕底部對齊 */
+      overflow: visible; /* 允許按鈕突出去 */
     }
     .tab {
       flex: 1; border-radius: 20px; padding: 8px 0;
@@ -224,6 +226,24 @@
     }
     .tab div { margin-top: 2px; }
     .tab.active { color: var(--primary); background: var(--primary-light); }
+
+    /* ★ 修正: 突起的大按鈕樣式 */
+    .tab.add-btn {
+      width: 58px; height: 58px; flex: 0 0 auto;
+      background: var(--primary);
+      color: white;
+      border-radius: 50%;
+      margin-bottom: 12px; /* 向上推 */
+      box-shadow: 0 8px 20px rgba(79, 70, 229, 0.4);
+      border: 4px solid #f3f4f6; /* 與背景同色，製造鏤空感 */
+      display: flex; justify-content: center; align-items: center;
+      position: relative; top: -10px;
+    }
+    .tab.add-btn.active {
+      background: var(--primary); /* 點擊後保持顏色 */
+      transform: scale(0.95);
+    }
+    .tab.add-btn div { margin: 0; line-height: 1; }
 
     /* === Misc Elements === */
     .progress {
@@ -320,6 +340,25 @@
     
     /* Img */
     .item .img { width: 100%; border-radius: 12px; margin-top: 12px; border: 1px solid var(--line); }
+
+    /* Shopping List Styles */
+    .shop-card {
+      background: white;
+      border-radius: 16px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      margin-bottom: 12px;
+      box-shadow: var(--shadow-sm);
+    }
+    .shop-row { display: flex; gap: 8px; margin-bottom: 8px; }
+    .shop-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line); }
+    .shop-btn {
+      width: 32px; height: 32px; border-radius: 8px;
+      display: grid; place-items: center; font-size: 16px;
+      cursor: pointer; border: 1px solid transparent;
+    }
+    .shop-btn.del { background: #fee2e2; color: #ef4444; }
+    .shop-btn.ok { background: #d1fae5; color: #10b981; }
   </style>
 </head>
 <body>
@@ -348,10 +387,11 @@
       <div class="navwrap">
         <button class="tab" data-tab="calendar">📅<div>日曆</div></button>
         <button class="tab" data-tab="report">📊<div>統計</div></button>
-        <button class="tab" data-tab="add">
-          <div style="background:var(--primary);color:white;width:40px;height:40px;border-radius:12px;display:grid;place-items:center;margin-top:-20px;box-shadow:0 4px 10px rgba(79,70,229,0.4);font-size:20px;">＋</div>
+        <button class="tab add-btn" data-tab="add">
+           <div style="font-size:28px; font-weight:bold;">＋</div>
         </button>
         <button class="tab" data-tab="orders">🧾<div>訂購</div></button>
+        <button class="tab" data-tab="shopping">🛒<div>清單</div></button>
       </div>
     </nav>
 
@@ -579,7 +619,6 @@ const Modal = (() => {
     });
   }
 
-  // ★ 修正重點 2: Emoji Picker 清楚分開樣式選擇與自訂輸入
   function emojiPicker({title="選擇圖示", current="🏷️", onPick}){
     const emojis = [
       "🍜","🍱","☕","🍰","🥤","🍺","🍶","🍎","🥗","🍔",
@@ -660,25 +699,30 @@ const DEFAULT_DATA = {
   incomeOverrides: {},
   availableOverrides: {},
   categories: [
-    { id:"food", name:"食物", budget:2500, icon:"🍜", enabled:true },
-    { id:"med", name:"藥妝", budget:600, icon:"💊", enabled:true },
-    { id:"pet", name:"貓咪用品", budget:1500, icon:"🐱", enabled:true },
-    { id:"Game", name:"課金（遊戲）", budget:500, icon:"🎮", enabled:true },
-    { id:"Clothes", name:"衣服", budget:800, icon:"👕", enabled:true },
-    { id:"misc", name:"雜物", budget:800, icon:"📦", enabled:true },
-    { id:"sub", name:"訂閱", budget:600, icon:"🔁", enabled:true },
-    { id:"oct", name:"八達通", budget:0, icon:"🚌", enabled:true },
+    { id:"cat_food", name:"食物", budget:2500, icon:"🍜", enabled:true },
+    { id:"cat_med", name:"藥", budget:600, icon:"💊", enabled:true },
+    { id:"cat_pet", name:"貓貓", budget:1500, icon:"🐱", enabled:true },
+    { id:"cat_game", name:"課金", budget:500, icon:"🎮", enabled:true },
+    { id:"cat_clothes", name:"衣服", budget:800, icon:"👕", enabled:true },
+    { id:"cat_misc", name:"雜物", budget:800, icon:"📦", enabled:true },
+    { id:"cat_sub", name:"訂閱", budget:600, icon:"🔁", enabled:true },
+    { id:"cat_oct", name:"八達通", budget:0, icon:"🚌", enabled:true },
   ],
-
+  budgetPresets: [
+    { id:"p_save",  name:"省錢模式", type:"available", value:6000 },
+    { id:"p_norm",  name:"正常模式", type:"available", value:7000 },
+    { id:"p_loose", name:"寬鬆模式", type:"available", value:8500 },
+  ],
   budgetOverrides: {},
-  platforms: ["線下","foodpanda","淘寶","超市","其他"],
-  payments: ["現金","信用卡","八達通","PayMe","Apple Pay","FPS","其他"],
+  platforms: ["線下","foodpanda","淘寶","Amazon","其他"],
+  payments: ["現金","信用卡","FPS","PayMe","Apple Pay","八達通","其他"],
   expenses: [],
   fixedBills: [
     { id:"bill_drive", name:"google drive", amount:23, startMonth: monthKey(todayISO()), dueDay:10, categoryId:"cat_sub", remindBeforeDays:3, active:true, lastPaidMonthByMonth:{} },
     { id:"bill_yt", name:"youtube", amount:208, startMonth: monthKey(todayISO()), dueDay:5, categoryId:"cat_sub", remindBeforeDays:3, active:true, lastPaidMonthByMonth:{} },
   ],
   orders: [],
+  shoppingList: [],
   subscriptions: [],
   wallets: {
     octopus: { balance: 0, topupAmount: 500, topupCount: 0 }
@@ -713,6 +757,7 @@ function loadData(){
   if (!base.categories) base.categories = structuredClone(DEFAULT_DATA.categories);
   if (!base.fixedBills) base.fixedBills = structuredClone(DEFAULT_DATA.fixedBills);
   if (!base.orders) base.orders = [];
+  if (!base.shoppingList) base.shoppingList = []; // Init shopping list
   if (!base.subscriptions) base.subscriptions = [];
   if (!base.wallets) base.wallets = structuredClone(DEFAULT_DATA.wallets);
   if (!base.wallets.octopus) base.wallets.octopus = structuredClone(DEFAULT_DATA.wallets.octopus);
@@ -725,33 +770,18 @@ function loadData(){
     }
   }
 
-  if (Array.isArray(base.subscriptions) && base.subscriptions.length){
-    for (const s of base.subscriptions){
-      const name = (s.name || "(訂閱)").trim();
-      const amount = Number(s.amount || 0);
-      if (!(amount > 0)) continue;
-      let dueDay = 1;
-      if (s.nextPayDate && /^\d{4}-\d{2}-\d{2}$/.test(s.nextPayDate)){
-        dueDay = Number(s.nextPayDate.slice(8,10)) || 1;
-      }
-      let startMonth = "";
-      if (s.startDate && /^\d{4}-\d{2}-\d{2}$/.test(s.startDate)) startMonth = s.startDate.slice(0,7);
-      else if (s.nextPayDate && /^\d{4}-\d{2}-\d{2}$/.test(s.nextPayDate)) startMonth = s.nextPayDate.slice(0,7);
-      else startMonth = monthKey(todayISO());
-
-      const bill = {
-        id: uid("bill"), name, amount: Math.round(amount*100)/100, startMonth,
-        dueDay: Math.max(1, Math.min(31, dueDay)), categoryId: s.categoryId || "cat_sub",
-        remindBeforeDays: 3, active: (s.status !== "cancelled"), lastPaidMonthByMonth: {}
-      };
-      base.fixedBills.push(bill);
-    }
-    base.subscriptions = [];
+  const octIndex = base.categories.findIndex(c=>c.id==="oct");
+  const catOctIndex = base.categories.findIndex(c=>c.id==="cat_oct");
+  if (octIndex !== -1 && catOctIndex === -1) {
+      base.categories[octIndex].id = "cat_oct";
+  } 
+  else if (octIndex !== -1 && catOctIndex !== -1) {
+      base.categories.splice(octIndex, 1);
+  }
+  else if (octIndex === -1 && catOctIndex === -1) {
+      base.categories.push({ id:"cat_oct", name:"八達通", budget:0, icon:"🚌", enabled:true });
   }
 
-  if (!base.categories.some(c=>c.id==="cat_oct")){
-    base.categories.push({ id:"cat_oct", name:"八達通", budget:0, icon:"🚌", enabled:true });
-  }
   if (!base.payments.includes("八達通")) base.payments.push("八達通");
 
   return base;
@@ -899,6 +929,7 @@ function render(){
   saveData();
   if (state.tab==="calendar") return renderCalendar();
   if (state.tab==="report") return renderReport();
+  if (state.tab==="shopping") return renderShopping(); 
   if (state.tab==="add") return renderAdd();
   if (state.tab==="orders") return renderOrders();
   if (state.tab==="settings") return renderSettings();
@@ -974,7 +1005,7 @@ function renderCalendar(){
           <div class="sub">現金支出總覽</div>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
-          <button class="btn" id="toggleMonthView">${view==="month" ? "返回單日" : "整月模式"}</button>
+          <button class="btn" id="toggleMonthView">${view==="month" ? "返回單日" : "整月"}</button>
           <input type="date" id="pickDay" value="${selected}" style="max-width:140px" />
         </div>
       </div>
@@ -1155,7 +1186,7 @@ function renderReport(){
                   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
                     <div style="font-size:18px">${c.icon||"🏷️"}</div>
                     <div class="title">${escapeHtml(c.name)}</div>
-                    <span class="pill">本月預算 ${money(r.budget)}</span>
+                    <span class="pill">${money(r.budget)}</span>
                     ${r.hasOverride ? `<span class="tag">自訂</span>` : ``}
                   </div>
                   <div class="meta">
@@ -1397,56 +1428,33 @@ function renderReport(){
   }
 }
 
-
-
-
-
-
-
-
-
 function openCategoryDetailModal(yyyyMm, catId){
   const cat = catById(catId);
   const title = `${cat?.icon||"🏷️"} ${cat?.name||"類別"} · ${yyyyMm}`;
-  
-  // 1. 取得該月份、該類別的支出 (Expenses)
   const ex = expensesByMonth(yyyyMm).filter(e=>e.categoryId===catId)
     .sort((a,b)=> b.date.localeCompare(a.date) || (b.createdAt||0)-(a.createdAt||0));
-    
-  // 2. 取得該月份、該類別的固定支出 (Bills)
   const bills = (data.fixedBills||[])
     .filter(b=> b.active && (b.categoryId||"cat_sub")===catId && (!b.startMonth || yyyyMm>=b.startMonth))
     .map(b=>({
       kind:"bill", date: billDueISOForMonth(yyyyMm, b.dueDay), title: b.name, amount: Number(b.amount||0),
-      note: `固定支出 · 每月${b.dueDay}號`,
+      note: `固定支出 · ${b.dueDay}號`,
     })).sort((a,b)=> b.date.localeCompare(a.date));
 
-  // 3. 合併並準備顯示資料 (增加 platform/payment 欄位)
   const items = [
     ...ex.map(e=>({
-      kind:"exp", 
-      date: e.date, 
-      title: e.title, 
-      amount: Number(e.amount||0),
-      platform: e.platform || "-",
-      payment: e.payment || "-",
-      note: e.note||""
+      kind:"exp", date: e.date, title: e.title, amount: Number(e.amount||0),
+      sub: `${e.platform||"-"} · ${e.payment||"-"}`, note: e.note||"",
+      platform: e.platform || "-", payment: e.payment || "-"
     })),
     ...bills.map(x=>({
-      kind:"bill", 
-      date: x.date, 
-      title: x.name, 
-      amount: x.amount, 
-      platform: "固定設定",
-      payment: "自動", 
-      note: x.note
+      kind:"bill", date: x.date, title: x.title, amount: x.amount, sub: x.note, note: "",
+      platform: "固定設定", payment: "自動"
     }))
   ].sort((a,b)=> b.date.localeCompare(a.date));
 
   if (!items.length){ Modal.info(title, "本月此類別未有紀錄。"); return; }
   const total = items.reduce((s,x)=> s + Number(x.amount||0), 0);
 
-  // 4. 渲染 Modal 內容 (更新為分行顯示)
   Modal.open({
     title,
     bodyHtml: `
@@ -1456,12 +1464,10 @@ function openCategoryDetailModal(yyyyMm, catId){
           <div class="item">
             <div class="row" style="align-items:flex-start">
               <div class="left" style="display:flex; flex-direction:column; gap:4px; min-width:0;">
-                
                 <div class="title" style="font-size:16px; margin:0;">
                   ${escapeHtml(it.title||"(無)")} 
                   ${it.kind==="bill"?`<span class="tag">固定</span>`:""}
                 </div>
-
                 <div style="display:flex; flex-direction:column; gap:2px; font-size:13px; color:var(--text-muted); margin-top:2px;">
                   <div>日期：${escapeHtml(it.date)}</div>
                   ${it.kind==="exp" ? `
@@ -1472,9 +1478,7 @@ function openCategoryDetailModal(yyyyMm, catId){
                   `}
                   ${(it.kind==="exp" && it.note) ? `<div style="color:var(--text-main)">備註：${escapeHtml(it.note)}</div>` : ""}
                 </div>
-
               </div>
-              
               <div class="amt" style="font-size:16px;">${money(it.amount)}</div>
             </div>
           </div>
@@ -1485,18 +1489,156 @@ function openCategoryDetailModal(yyyyMm, catId){
   });
 }
 
+/* =========================
+   Shopping List (Updated)
+   ========================= */
+function renderShopping(){
+  setTitle("購物清單");
+  if (!data.shoppingList) data.shoppingList = [];
 
+  const updateItem = (id, field, val) => {
+    const item = data.shoppingList.find(x => x.id === id);
+    if (item) {
+      item[field] = val;
+      saveData();
+    }
+  };
 
+  const deleteItem = (id) => {
+    // 簡單的淡出效果
+    const row = document.getElementById(`shop_${id}`);
+    if(row) {
+        row.style.transition = "all 0.3s";
+        row.style.opacity = "0";
+        row.style.transform = "translateX(20px)";
+        setTimeout(()=>{
+            data.shoppingList = data.shoppingList.filter(x => x.id !== id);
+            saveData();
+            renderShopping();
+            toast("已刪除");
+        }, 300);
+    }
+  };
 
+  // ★ 功能: 將購物清單項目轉為正式記帳
+  const convertShopToExpense = (id) => {
+    const item = data.shoppingList.find(x => x.id === id);
+    if(!item) return;
 
+    // 建立新支出
+    const exp = {
+        id: uid("exp"),
+        date: item.date || todayISO(),
+        amount: Number(item.amount) || 0, // 如果沒填金額，預設0
+        title: item.name || "(無物品名稱)",
+        categoryId: item.categoryId || (data.categories[0]?.id || "cat_misc"),
+        platform: item.platform || "線下",
+        payment: item.payment || "現金",
+        note: "來自購物清單",
+        receiptImage: "",
+        createdAt: Date.now(),
+        type: ""
+    };
+    
+    // 存入 expenses
+    data.expenses.push(exp);
+    // 移除購物清單
+    data.shoppingList = data.shoppingList.filter(x => x.id !== id);
+    
+    saveData();
+    renderShopping();
+    toast("已加入記帳！");
+  };
+
+  main.innerHTML = `
+    <div class="card">
+      <div class="row">
+        <div class="left"><div class="h">待買清單</div></div>
+      </div>
+      <div class="sub" style="margin-bottom:12px;">按 ✓ 將加入記帳統計</div>
+
+      <div id="shopContainer">
+        ${data.shoppingList.map(item => `
+          <div class="shop-card" id="shop_${item.id}">
+             <div class="shop-row">
+                 <input type="date" value="${item.date || todayISO()}" 
+                    onchange="window.updateShop('${item.id}', 'date', this.value)"
+                    style="flex:1;">
+                 <select onchange="window.updateShop('${item.id}', 'categoryId', this.value)" style="flex:1;">
+                    ${data.categories.map(c => 
+                        `<option value="${c.id}" ${c.id === (item.categoryId||data.categories[0].id) ? 'selected' : ''}>${c.icon} ${c.name}</option>`
+                    ).join("")}
+                 </select>
+             </div>
+
+             <div class="shop-row">
+                 <input type="text" value="${escapeAttr(item.name||"")}" placeholder="物品名稱" 
+                   onchange="window.updateShop('${item.id}', 'name', this.value)"
+                   style="flex:2; font-weight:bold;">
+                 <input type="number" value="${item.amount || ""}" placeholder="金額" 
+                   onchange="window.updateShop('${item.id}', 'amount', this.value)"
+                   style="flex:1;">
+             </div>
+
+             <div class="shop-row">
+                 <select onchange="window.updateShop('${item.id}', 'platform', this.value)" style="flex:1; color:var(--text-muted); font-size:13px;">
+                    <option value="" disabled ${!item.platform ? 'selected' : ''}>購買地</option>
+                    ${data.platforms.map(p => 
+                        `<option value="${p}" ${p === item.platform ? 'selected' : ''}>${p}</option>`
+                    ).join("")}
+                 </select>
+                 <select onchange="window.updateShop('${item.id}', 'payment', this.value)" style="flex:1; color:var(--text-muted); font-size:13px;">
+                    <option value="" ${!item.payment ? 'selected' : ''}>(付款方式)</option>
+                    ${data.payments.map(p => 
+                        `<option value="${p}" ${p === item.payment ? 'selected' : ''}>${p}</option>`
+                    ).join("")}
+                 </select>
+             </div>
+
+             <div class="shop-actions">
+                 <div class="shop-btn del" onclick="window.delShop('${item.id}')">✕</div>
+                 <div style="flex:1;"></div>
+                 <div class="shop-btn ok" onclick="window.finishShop('${item.id}')">✓</div>
+             </div>
+          </div>
+        `).join("")}
+      </div>
+
+      <div class="actions" style="margin-top:10px; border-top:none; padding-top:0;">
+        <button class="btn primary" id="addShopItem" style="width:100%;">＋ 增加待辦</button>
+      </div>
+    </div>
+  `;
+
+  // 將函數掛載到 window
+  window.updateShop = updateItem;
+  window.delShop = deleteItem;
+  window.finishShop = convertShopToExpense;
+
+  document.getElementById("addShopItem").onclick = () => {
+    // 預設加入一筆空的
+    data.shoppingList.push({ 
+        id: uid("shop"), 
+        name: "", 
+        date: todayISO(),
+        categoryId: data.categories[0]?.id,
+        platform: data.platforms[0],
+        payment: "", // 預設空
+        amount: ""
+    });
+    renderShopping();
+  };
+}
+
+/* =========================
+   Add / Edit Expense
+   ========================= */
 function renderAdd(){
   setTitle(state.editingExpenseId ? "編輯支出" : "新增支出");
   const cats=enabledCategories();
   const defaultCat = cats[0]?.id || "";
   const edit = state.editingExpenseId ? data.expenses.find(e=>e.id===state.editingExpenseId) : null;
 
-  // 嘗試找尋關聯的 Order (若是編輯模式且之前有存過)
-  // 注意：簡易版邏輯通常是一次性建立，這裡預設為空，若要嚴謹需由 ID 反查
   const form = {
     date: edit?.date || todayISO(), amountExpr: edit ? String(edit.amount ?? "") : "",
     title: edit?.title || "", categoryId: edit?.categoryId || defaultCat,
@@ -1568,7 +1710,6 @@ function renderAdd(){
       <div id="orderBlock" style="display:none; padding:12px; background:rgba(255,255,255,0.5); border-radius:12px; margin-top:12px;">
          <div class="field"><label>到期日</label><input type="date" id="f_orderDue"></div>
          <div class="field"><label>交收</label><select id="f_orderDelivery"><option value="面交">面交</option><option value="快遞">快遞</option></select></div>
-         
          <div class="hr"></div>
          <div class="grid3" style="grid-template-columns:1fr 1fr; margin-top:8px;">
             <div class="field" style="margin-top:0">
@@ -1618,7 +1759,6 @@ function renderAdd(){
   function refreshAmountPreview(){
     const v = evalAmountExpression(amountInput.value);
     amountPreview.textContent = Number.isFinite(v) ? `= ${money(v)}` : ``;
-    // 自動填入已結金額為當前支出金額 (方便用戶)
     if (document.getElementById("f_isOrder").checked && document.getElementById("f_orderPaidAmt").value === "") {
         document.getElementById("f_orderPaidAmt").value = Number.isFinite(v) ? v : "";
     }
@@ -1678,7 +1818,6 @@ function renderAdd(){
     const isBill  = document.getElementById("f_isBill").checked;
     const orderDue = isOrder ? document.getElementById("f_orderDue").value : "";
     const orderDelivery = isOrder ? (document.getElementById("f_orderDelivery").value || "面交") : "面交";
-    // ★ 讀取新欄位
     const orderFullAmt = isOrder ? evalAmountExpression(document.getElementById("f_orderFullAmt").value) : 0;
     const orderPaidAmt = isOrder ? evalAmountExpression(document.getElementById("f_orderPaidAmt").value) : 0;
 
@@ -1716,9 +1855,8 @@ function renderAdd(){
 
       if (isOrder){
         if (!data.orders) data.orders = [];
-        // ★ 存入新欄位 fullAmt, paidAmt
         data.orders.push({
-          id: uid("ord"), name: exp.title, amount: exp.amount, // 注意：這裡的 amount 是指本次記帳金額
+          id: uid("ord"), name: exp.title, amount: exp.amount, 
           fullAmt: Number.isFinite(orderFullAmt) ? orderFullAmt : 0,
           paidAmt: Number.isFinite(orderPaidAmt) ? orderPaidAmt : 0,
           dueDate: orderDue, createdDate: exp.date, categoryId: exp.categoryId,
@@ -1746,10 +1884,9 @@ function renderAdd(){
   };
 }
 
-
-
-
-
+/* =========================
+   Orders page
+   ========================= */
 function renderOrders(){
   setTitle("訂購物");
   if (!data.orders) data.orders = [];
@@ -1782,12 +1919,10 @@ function renderOrders(){
       ? (late ? `<span class="bad">過期</span>` : (soon?`<span class="warn">快到</span>`:`<span class="ok">進行中</span>`))
       : `<span class="tag">已完成</span>`;
     
-    // ★ 計算邏輯
     const full = Number(o.fullAmt || 0);
     const paid = Number(o.paidAmt || 0);
     const remain = full - paid;
     
-    // 構建顯示字串
     let paymentStatusHtml = "";
     if (full > 0 || paid > 0) {
         let remainStr = "";
@@ -1822,7 +1957,7 @@ function renderOrders(){
           </div>
           
           <div style="text-align:right">
-             <div class="amt">${money(o.amount)}</div>
+            <div class="amt">${money(o.amount)}</div>
           </div>
         </div>
         <div class="actions">
@@ -1904,13 +2039,6 @@ function renderOrders(){
     };
   });
 }
-
-
-
-
-
-
-
 
 /* =========================
    Settings
@@ -2012,7 +2140,6 @@ function renderSettings(){
         const budget=evalAmountExpression(v.budget);
         if(!Number.isFinite(budget)){ toast("預算錯"); return; }
         
-        // ★ 修正重點 2: 使用新的 Emoji Picker
         Modal.emojiPicker({
           title: "選擇類別圖示",
           current: "🏷️",
@@ -2137,15 +2264,9 @@ function editChip(kind, arr, idx, onDone){
 /* =========================
    Expense Card + actions
    ========================= */
-   
-   
-   
-   
-   
 function expenseCard(e){
   const cat=catById(e.categoryId);
   const flags = [];
-  // 處理標籤
   if (e.type==="octopus_topup") flags.push(`<span class="tag">充值</span>`);
   if (e.payment==="八達通" && e.type!=="octopus_topup") flags.push(`<span class="tag">八達通付款</span>`);
 
@@ -2163,7 +2284,7 @@ function expenseCard(e){
 
           <div style="display:flex; flex-direction:column; gap:3px; font-size:13px; color:var(--text-muted); margin-top:2px;">
             <div>分類：${escapeHtml(cat?.name||"-")}</div>
-            <div>購買平台：${escapeHtml(e.platform||"-")}</div>
+            <div>購買地方：${escapeHtml(e.platform||"-")}</div>
             <div>付款方式：${escapeHtml(e.payment||"-")}</div>
             ${e.note ? `<div style="margin-top:4px; color:var(--text-main);">備註：${escapeHtml(e.note)}</div>` : ""}
           </div>
@@ -2272,5 +2393,4 @@ saveData();
 setTab("calendar");
 </script>
 </body>
-
 </html>

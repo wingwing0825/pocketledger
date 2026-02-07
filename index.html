@@ -3,7 +3,16 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <head>
   <title>PocketLedger — 手機記帳</title>
+  
+  <link rel="icon" href="https://imgur.com/a/iONP5Eg>
+  <link rel="apple-touch-icon" href="https://imgur.com/a/iONP5Eg">
+  
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+  </head>
   <style>
     :root{
       /* 現代配色系統 */
@@ -748,13 +757,10 @@ const DEFAULT_DATA = {
     { id:"p_loose", name:"寬鬆模式", type:"available", value:8500 },
   ],
   budgetOverrides: {},
-  platforms: ["線下","foodpanda","淘寶","Amazon","其他"],
+  platforms: ["線下","foodpanda","淘寶","其他"],
   payments: ["現金","信用卡","FPS","PayMe","Apple Pay","八達通","其他"],
   expenses: [],
-  fixedBills: [
-    { id:"bill_drive", name:"google drive", amount:23, startMonth: monthKey(todayISO()), dueDay:10, categoryId:"cat_sub", remindBeforeDays:3, active:true, lastPaidMonthByMonth:{} },
-    { id:"bill_yt", name:"youtube", amount:208, startMonth: monthKey(todayISO()), dueDay:5, categoryId:"cat_sub", remindBeforeDays:3, active:true, lastPaidMonthByMonth:{} },
-  ],
+  fixedBills: [],
   orders: [],
   shoppingList: [],
   subscriptions: [],

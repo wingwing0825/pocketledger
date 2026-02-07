@@ -146,6 +146,13 @@
       padding: 16px;
       transition: background 0.2s;
     }
+    /* 完成的訂單樣式 */
+    .item.done {
+      background: rgba(243, 244, 246, 0.8);
+      border-color: rgba(229, 231, 235, 0.8);
+      opacity: 0.85;
+      filter: grayscale(0.8);
+    }
     .item .title { font-weight: 700; font-size: 15px; margin-bottom: 2px; color: var(--text-main); }
     .item .meta { font-size: 12px; color: var(--text-muted); margin-top: 4px; line-height: 1.4; }
     .item .amt { font-weight: 800; font-size: 16px; color: var(--text-main); font-variant-numeric: tabular-nums; }
@@ -262,6 +269,12 @@
     .ok { color: var(--good); font-weight: 700; }
     .bad { color: var(--bad); font-weight: 700; }
 
+    /* === Stepper === */
+    .stepper {
+      display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+    }
+    .stepper-val { font-weight: 800; font-size: 16px; min-width: 20px; text-align: center; }
+
     /* === Modal === */
     .modalOverlay {
       position: fixed; inset: 0; background: rgba(0,0,0,0.3); backdrop-filter: blur(4px);
@@ -373,6 +386,13 @@
     }
     .shop-btn.del { background: #fee2e2; color: #ef4444; }
     .shop-btn.ok { background: #d1fae5; color: #10b981; }
+
+    /* Fill Helper Buttons */
+    .fill-helper { 
+        padding: 4px 8px; background: var(--primary-light); color: var(--primary); 
+        border-radius: 6px; font-size: 11px; font-weight: bold; cursor: pointer; margin-left: 6px;
+    }
+    .fill-helper:active { transform: scale(0.95); }
   </style>
 </head>
 <body>
@@ -602,10 +622,11 @@ const Modal = (() => {
           }
           const v = values[f.key] ?? "";
           const type = f.type || "text";
+          const im = f.inputmode || (f.type==="number"?"decimal":"text");
           return `
             <div class="field">
               <label>${escapeHtml(f.label||"")}</label>
-              <input type="${escapeAttr(type)}" data-k="${escapeAttr(f.key)}" value="${escapeAttr(String(v))}" placeholder="${escapeAttr(f.placeholder||"")}">
+              <input type="${escapeAttr(type)}" inputmode="${escapeAttr(im)}" data-k="${escapeAttr(f.key)}" value="${escapeAttr(String(v))}" placeholder="${escapeAttr(f.placeholder||"")}">
               ${f.sub?`<div class="mini">${escapeHtml(f.sub)}</div>`:""}
             </div>
           `;
@@ -1145,6 +1166,8 @@ function renderReport(){
     b.active && (!b.startMonth || m>=b.startMonth) && billShouldRemindForMonth(b,m)
   );
 
+  let octCount = 1; // 暫存八達通充值次數
+
   main.innerHTML = `
     <div class="card">
       <div class="row">
@@ -1240,9 +1263,15 @@ function renderReport(){
             <div class="meta">餘額：<b class="${w.balance<0?'bad':''}">${money(w.balance)}</b> · 每次充 ${money(w.topupAmount)}</div>
           </div>
         </div>
-        <div class="actions">
-          <button class="btn small" id="editTopupSetting">設定</button>
-          <button class="btn small primary" id="doTopup">充值 +1</button>
+        
+        <div class="actions" style="justify-content:space-between; align-items:center;">
+           <button class="btn small" id="editTopupSetting">設定</button>
+           <div class="stepper">
+              <button class="btn small" id="octMinus">-</button>
+              <div class="stepper-val" id="octCountDisp">1</div>
+              <button class="btn small" id="octPlus">+</button>
+              <button class="btn small primary" id="doTopup">充值</button>
+           </div>
         </div>
       </div>
 
@@ -1265,11 +1294,21 @@ function renderReport(){
 
   document.getElementById("addBill").onclick = ()=> openBillEditor(null);
 
+  // Octopus Counter Logic
+  document.getElementById("octMinus").onclick = () => {
+      if(octCount > 1) octCount--;
+      document.getElementById("octCountDisp").textContent = octCount;
+  };
+  document.getElementById("octPlus").onclick = () => {
+      octCount++;
+      document.getElementById("octCountDisp").textContent = octCount;
+  };
+
   document.getElementById("editTopupSetting").onclick=()=>{
     Modal.form({
       title:"設定「充值八達通」",
       fields:[
-        { type:"text", key:"amt", label:"每次充值金額（可算式）", sub:"例如 500 或 400+100" },
+        { type:"text", inputmode:"decimal", key:"amt", label:"每次充值金額（可算式）", sub:"例如 500 或 400+100" },
       ],
       values:{ amt:String(w.topupAmount) },
       submitText:"保存",
@@ -1284,24 +1323,27 @@ function renderReport(){
   };
 
   document.getElementById("doTopup").onclick=()=>{
-    const amt = Number(octo().topupAmount||0);
-    if (!(amt>0)){ toast("充值金額未設定"); return; }
+    const unitAmt = Number(octo().topupAmount||0);
+    if (!(unitAmt>0)){ toast("充值金額未設定"); return; }
+    
+    const totalAmt = unitAmt * octCount;
+
     Modal.confirm({
       title:"確認充值八達通",
-      msg:`將會新增一筆「充值八達通」紀錄：${money(amt)}`,
+      msg:`將會新增一筆「充值八達通」紀錄：${money(totalAmt)} (共 ${octCount} 次)`,
       okText:"充值",
       cancelText:"取消",
       onOk:()=>{
         const iso=todayISO();
         const exp={
-          id: uid("exp"), date: iso, amount: Math.round(amt*100)/100,
-          title: "充值八達通", categoryId: "cat_oct", platform: "線下", payment: "八達通",
+          id: uid("exp"), date: iso, amount: Math.round(totalAmt*100)/100,
+          title: `充值八達通 (x${octCount})`, categoryId: "cat_oct", platform: "線下", payment: "八達通",
           note: "", receiptImage: "", createdAt: Date.now(), type: "octopus_topup"
         };
         data.expenses.push(exp);
         state.selectedDay = iso;
         state.reportMonth = monthKey(iso);
-        toast("已充值 +1");
+        toast("已充值");
         renderReport();
       }
     });
@@ -1394,7 +1436,7 @@ function renderReport(){
       title: b ? "編輯固定支出" : "新增固定支出",
       fields:[
         { type:"text", key:"name", label:"名稱", placeholder:"例如 netflix" },
-        { type:"text", key:"amount", label:"金額" },
+        { type:"text", inputmode:"decimal", key:"amount", label:"金額" },
         { type:"month", key:"startMonth", label:"開始月份" },
         { type:"text", key:"dueDay", label:"每月到期日（1-31）" },
         { type:"text", key:"remind", label:"提前幾日提醒" },
@@ -1504,7 +1546,7 @@ function openCategoryDetailModal(yyyyMm, catId){
 }
 
 /* =========================
-   Shopping List (Updated)
+   Shopping List
    ========================= */
 function renderShopping(){
   setTitle("購物清單");
@@ -1534,7 +1576,6 @@ function renderShopping(){
     }
   };
 
-  // ★ 功能: 將購物清單項目轉為正式記帳
   const convertShopToExpense = (id) => {
     const item = data.shoppingList.find(x => x.id === id);
     if(!item) return;
@@ -1554,11 +1595,8 @@ function renderShopping(){
         type: ""
     };
     
-    // 存入 expenses
     data.expenses.push(exp);
-    // 移除購物清單
     data.shoppingList = data.shoppingList.filter(x => x.id !== id);
-    
     saveData();
     renderShopping();
     toast("已加入記帳！");
@@ -1584,16 +1622,14 @@ function renderShopping(){
                     ).join("")}
                  </select>
              </div>
-
              <div class="shop-row">
                  <input type="text" value="${escapeAttr(item.name||"")}" placeholder="物品名稱" 
                    onchange="window.updateShop('${item.id}', 'name', this.value)"
                    style="flex:2; font-weight:bold;">
-                 <input type="number" value="${item.amount || ""}" placeholder="金額" 
+                 <input type="text" inputmode="decimal" value="${item.amount || ""}" placeholder="金額" 
                    onchange="window.updateShop('${item.id}', 'amount', this.value)"
                    style="flex:1;">
              </div>
-
              <div class="shop-row">
                  <select onchange="window.updateShop('${item.id}', 'platform', this.value)" style="flex:1; color:var(--text-muted); font-size:13px;">
                     <option value="" disabled ${!item.platform ? 'selected' : ''}>購買地</option>
@@ -1608,7 +1644,6 @@ function renderShopping(){
                     ).join("")}
                  </select>
              </div>
-
              <div class="shop-actions">
                  <div class="shop-btn del" onclick="window.delShop('${item.id}')">✕</div>
                  <div style="flex:1;"></div>
@@ -1624,20 +1659,18 @@ function renderShopping(){
     </div>
   `;
 
-  // 將函數掛載到 window
   window.updateShop = updateItem;
   window.delShop = deleteItem;
   window.finishShop = convertShopToExpense;
 
   document.getElementById("addShopItem").onclick = () => {
-    // 預設加入一筆空的
     data.shoppingList.push({ 
         id: uid("shop"), 
         name: "", 
         date: todayISO(),
         categoryId: data.categories[0]?.id,
         platform: data.platforms[0],
-        payment: "", // 預設空
+        payment: "",
         amount: ""
     });
     renderShopping();
@@ -1675,7 +1708,7 @@ function renderAdd(){
 
       <div class="field">
         <label>金額 (本次支出)</label>
-        <input inputmode="text" id="f_amount" value="${escapeAttr(form.amountExpr)}" placeholder="例如 6+80+10" style="font-size:20px;font-weight:bold">
+        <input type="text" inputmode="decimal" id="f_amount" value="${escapeAttr(form.amountExpr)}" placeholder="例如 6+80+10" style="font-size:20px;font-weight:bold">
         <div class="mini" id="amountPreview" style="text-align:right;height:14px;color:var(--primary)"></div>
       </div>
 
@@ -1722,17 +1755,17 @@ function renderAdd(){
       </div>
 
       <div id="orderBlock" style="display:none; padding:12px; background:rgba(255,255,255,0.5); border-radius:12px; margin-top:12px;">
-         <div class="field"><label>到貨日</label><input type="date" id="f_orderDue"></div>
+         <div class="field"><label>預計到貨日</label><input type="date" id="f_orderDue"></div>
          <div class="field"><label>交收</label><select id="f_orderDelivery"><option value="面交">面交</option><option value="快遞">快遞</option></select></div>
          <div class="hr"></div>
          <div class="grid3" style="grid-template-columns:1fr 1fr; margin-top:8px;">
             <div class="field" style="margin-top:0">
-              <label>全款</label>
-              <input type="number" id="f_orderFullAmt" placeholder="總金額">
+              <label>全款 <span class="fill-helper" id="fillFullAmt">⚡同上</span></label>
+              <input type="text" inputmode="decimal" id="f_orderFullAmt" placeholder="總金額">
             </div>
             <div class="field" style="margin-top:0">
-              <label>已結</label>
-              <input type="number" id="f_orderPaidAmt" placeholder="已付金額">
+              <label>已結 <span class="fill-helper" id="fillPaidAmt">⚡同上</span></label>
+              <input type="text" inputmode="decimal" id="f_orderPaidAmt" placeholder="已付金額">
             </div>
          </div>
       </div>
@@ -1773,9 +1806,6 @@ function renderAdd(){
   function refreshAmountPreview(){
     const v = evalAmountExpression(amountInput.value);
     amountPreview.textContent = Number.isFinite(v) ? `= ${money(v)}` : ``;
-    if (document.getElementById("f_isOrder").checked && document.getElementById("f_orderPaidAmt").value === "") {
-        document.getElementById("f_orderPaidAmt").value = Number.isFinite(v) ? v : "";
-    }
   }
   amountInput.addEventListener("input", refreshAmountPreview);
   refreshAmountPreview();
@@ -1791,6 +1821,22 @@ function renderAdd(){
   isOrderEl.addEventListener("change", refreshBlocks);
   isBillEl.addEventListener("change", refreshBlocks);
   refreshBlocks();
+  
+  // ★ Auto-Fill Logic (Updated Logic: Both take from main Amount)
+  document.getElementById("fillFullAmt").onclick = () => {
+      const v = evalAmountExpression(document.getElementById("f_amount").value);
+      if(Number.isFinite(v)) {
+          document.getElementById("f_orderFullAmt").value = v;
+          toast("已填入全款");
+      }
+  };
+  document.getElementById("fillPaidAmt").onclick = () => {
+      const v = evalAmountExpression(document.getElementById("f_amount").value);
+      if(Number.isFinite(v)) {
+          document.getElementById("f_orderPaidAmt").value = v;
+          toast("已填入已付金額");
+      }
+  };
 
   document.getElementById("f_receipt").addEventListener("change", async (e)=>{
     const f=e.target.files?.[0];
@@ -1904,7 +1950,14 @@ function renderAdd(){
 function renderOrders(){
   setTitle("訂購物");
   if (!data.orders) data.orders = [];
-  const list = [...data.orders].sort((a,b)=> (a.dueDate||"").localeCompare(b.dueDate||""));
+  
+  // Sort: Active first (sorted by date), then Done.
+  const list = [...data.orders].sort((a,b)=> {
+      if (a.status !== b.status) {
+          return a.status === "active" ? -1 : 1;
+      }
+      return (a.dueDate||"").localeCompare(b.dueDate||"");
+  });
 
   main.innerHTML = `
     <div class="card">
@@ -1954,7 +2007,7 @@ function renderOrders(){
     }
 
     return `
-      <div class="item" style="${soon||late ? 'border-color:#fde68a;background:#fffbeb':''}">
+      <div class="item ${o.status==='done'?'done':''}" style="${soon||late ? 'border-color:#fde68a;background:#fffbeb':''}">
         <div class="row" style="align-items:flex-start">
           <div class="left" style="flex:1;">
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -1975,6 +2028,7 @@ function renderOrders(){
           </div>
         </div>
         <div class="actions">
+          ${(o.status==="active" && remain > 0) ? `<button class="btn small primary" data-settle="${o.id}">支付 / 調整</button>` : ``}
           <button class="btn small" data-toggleorder="${o.id}">${o.status==="active"?"完成/取消":"重開"}</button>
           <button class="btn small" data-editorder="${o.id}">編輯</button>
           <button class="btn small danger" data-delorder="${o.id}">刪除</button>
@@ -1982,6 +2036,75 @@ function renderOrders(){
       </div>
     `;
   }).join("");
+
+  orderList.querySelectorAll("[data-settle]").forEach(btn=>{
+      btn.onclick = () => {
+          const id = btn.dataset.settle;
+          const o = data.orders.find(x => x.id === id);
+          if(!o) return;
+          const full = Number(o.fullAmt || 0);
+          const paid = Number(o.paidAmt || 0);
+          const remain = full - paid;
+          
+          const modalId = uid("settleForm");
+          
+          // 若還有剩餘款項，預設填入剩餘金額；若已付清，預設填入已付金額(方便退款)
+          const defaultVal = remain > 0 ? remain : paid;
+
+          Modal.open({
+              title: "更新付款進度",
+              bodyHtml: `
+                <div class="hint" style="margin-bottom:12px">目前已付: ${money(paid)} / 全款: ${money(full)}</div>
+                <div class="field">
+                    <label>輸入金額</label>
+                    <input type="text" inputmode="decimal" id="${modalId}_amt" value="${defaultVal}" style="font-size:20px; font-weight:bold;">
+                </div>
+                <div class="mini" style="margin-top:6px; color:var(--text-muted);">
+                   輸入金額後，選擇「紀錄付款」或「還原/扣減」。
+                </div>
+              `,
+              footButtons: [
+                  { text: "取消", onClick: ()=> Modal.close("cancel") },
+                  { text: "還原/扣減 (-)", variant:"danger", onClick: ()=>{
+                       const val = Number(document.getElementById(`${modalId}_amt`).value);
+                       if(!Number.isFinite(val) || val <= 0) { toast("金額錯誤"); return; }
+                       
+                       // 執行扣減邏輯 (強制轉為數字運算)
+                       let current = Number(o.paidAmt || 0);
+                       o.paidAmt = Math.max(0, current - val);
+                       
+                       saveData(); // ★ 強制存檔
+                       
+                       toast(`已扣減 ${val} (請記得自行刪除對應支出)`);
+                       Modal.close("ok");
+                       renderOrders();
+                  }},
+                  { text: "紀錄付款 (+)", variant:"primary", onClick: ()=>{
+                       const val = Number(document.getElementById(`${modalId}_amt`).value);
+                       if(!Number.isFinite(val) || val <= 0) { toast("金額錯誤"); return; }
+                       
+                       // 執行付款邏輯
+                       const iso=todayISO();
+                       const exp={
+                            id: uid("exp"), date: iso, amount: Math.round(val*100)/100,
+                            title: `尾款: ${o.name}`, categoryId: o.categoryId, platform: o.platform, payment: "現金",
+                            note: "自動產生之尾款", receiptImage: "", createdAt: Date.now(), type: ""
+                       };
+                       data.expenses.push(exp);
+                       
+                       let current = Number(o.paidAmt || 0);
+                       o.paidAmt = current + val;
+                       
+                       saveData(); // ★ 強制存檔
+                       
+                       toast(`已記錄付款 ${val}`);
+                       Modal.close("ok");
+                       renderOrders();
+                  }}
+              ]
+          });
+      };
+  });
 
   orderList.querySelectorAll("[data-toggleorder]").forEach(btn=>{
     btn.onclick=()=>{
@@ -2015,10 +2138,10 @@ function renderOrders(){
         title:"編輯訂購物",
         fields:[
           { type:"text", key:"name", label:"名稱" },
-          { type:"text", key:"amount", label:"記帳金額 (本筆支出)" },
+          { type:"text", inputmode:"decimal", key:"amount", label:"記帳金額 (本筆支出)" },
           { type:"divider" },
-          { type:"text", key:"fullAmt", label:"全款" },
-          { type:"text", key:"paidAmt", label:"已結" },
+          { type:"text", inputmode:"decimal", key:"fullAmt", label:"全款" },
+          { type:"text", inputmode:"decimal", key:"paidAmt", label:"已結" },
           { type:"divider" },
           { type:"date", key:"due", label:"到期日" },
           { type:"select", key:"delivery", label:"交收", options:[{value:"面交",text:"面交"},{value:"快遞",text:"快遞"}] },
@@ -2066,11 +2189,11 @@ function renderSettings(){
       <div class="h">基本設定</div>
       <div class="field">
         <label>每月預設收入</label>
-        <input inputmode="text" id="s_income" value="${escapeAttr(String(data.settings.monthlyIncomeDefault))}">
+        <input type="text" inputmode="decimal" id="s_income" value="${escapeAttr(String(data.settings.monthlyIncomeDefault))}">
       </div>
       <div class="field">
         <label>每月預設可用金額</label>
-        <input inputmode="text" id="s_available" value="${escapeAttr(String(data.settings.monthlyAvailableDefault))}">
+        <input type="text" inputmode="decimal" id="s_available" value="${escapeAttr(String(data.settings.monthlyAvailableDefault))}">
       </div>
       <div class="actions">
         <button class="btn primary" id="saveIncome">保存設定</button>
@@ -2130,7 +2253,7 @@ function renderSettings(){
         <div class="row">
           <div class="left">
             <div style="display:flex;align-items:center;gap:8px;">
-              <div style="font-size:18px">${c.icon||"🏷️"}</div>
+              <div style="font-size:24px;cursor:pointer;" data-editicon="${c.id}">${c.icon||"🏷️"}</div>
               <div class="title">${escapeHtml(c.name)}</div>
               ${!c.enabled?`<span class="bad">已停用</span>`:""}
             </div>
@@ -2144,10 +2267,11 @@ function renderSettings(){
     `;
   }).join("");
 
+  // 新增類別
   document.getElementById("addCat").onclick=()=>{
     Modal.form({
       title:"新增類別",
-      fields:[ { type:"text", key:"name", label:"名稱" }, { type:"text", key:"budget", label:"預算" } ],
+      fields:[ { type:"text", key:"name", label:"名稱" }, { type:"text", inputmode:"decimal", key:"budget", label:"預算" } ],
       values:{ name:"", budget:"0" },
       submitText:"新增",
       onSubmit:(v, done)=>{
@@ -2167,28 +2291,84 @@ function renderSettings(){
     });
   };
 
+  // 點擊 Icon 更改圖示
+  catList.querySelectorAll("[data-editicon]").forEach(el => {
+      el.onclick = () => {
+          const id = el.dataset.editicon;
+          const c = data.categories.find(x => x.id === id);
+          if(!c) return;
+          Modal.emojiPicker({
+             title: `更改「${c.name}」圖示`,
+             current: c.icon || "🏷️",
+             onPick: (icon) => {
+                 c.icon = icon;
+                 saveData();
+                 renderSettings();
+                 toast("已更新圖示");
+             }
+          });
+      };
+  });
+
+  // 編輯類別內容
   catList.querySelectorAll("[data-editcat]").forEach(btn=>{
     btn.onclick=()=>{
       const id=btn.dataset.editcat;
       const c=data.categories.find(x=>x.id===id);
       if(!c) return;
-      Modal.form({
-        title:"編輯類別",
-        fields:[
-          { type:"text", key:"name", label:"名稱" },
-          { type:"text", key:"budget", label:"預算" },
-          { type:"switch", key:"enabled", label:"啟用" }
-        ],
-        values:{ name:c.name, budget:String(c.budget), enabled:c.enabled },
-        submitText:"保存",
-        onSubmit:(v, done)=>{
-          const budget=evalAmountExpression(v.budget);
-          if(!Number.isFinite(budget)){ toast("預算錯"); return; }
-          c.name=v.name; c.budget=budget; c.enabled=v.enabled;
-          toast("已保存");
-          done(); renderSettings();
-        }
+      
+      // 這裡我們提供更直觀的編輯方式，讓用戶在 Modal 內點擊按鈕來換圖示
+      const formHtmlId = uid("editForm");
+      
+      Modal.open({
+         title: "編輯類別",
+         bodyHtml: `
+            <div id="${formHtmlId}">
+                <div class="field" style="flex-direction:row; align-items:center; justify-content:space-between;">
+                    <label>點擊圖示更換</label>
+                    <button class="btn" id="${formHtmlId}_icon" style="font-size:24px;">${c.icon}</button>
+                </div>
+                <div class="field">
+                    <label>名稱</label>
+                    <input id="${formHtmlId}_name" value="${escapeAttr(c.name)}">
+                </div>
+                <div class="field">
+                    <label>預算</label>
+                    <input type="text" inputmode="decimal" id="${formHtmlId}_budget" value="${escapeAttr(String(c.budget))}">
+                </div>
+                <div class="switch">
+                    <div class="label">啟用</div>
+                    <input type="checkbox" id="${formHtmlId}_enabled" ${c.enabled?'checked':''} style="width:22px;height:22px">
+                </div>
+            </div>
+         `,
+         footButtons: [
+             { text:"取消", onClick: ()=> Modal.close("cancel") },
+             { text:"保存", variant:"primary", onClick: () => {
+                 const name = document.getElementById(formHtmlId+"_name").value;
+                 const budget = evalAmountExpression(document.getElementById(formHtmlId+"_budget").value);
+                 const enabled = document.getElementById(formHtmlId+"_enabled").checked;
+                 
+                 if(!Number.isFinite(budget)){ toast("預算錯"); return; }
+                 c.name = name; c.budget = budget; c.enabled = enabled;
+                 toast("已保存");
+                 Modal.close("ok");
+                 renderSettings();
+             }}
+         ]
       });
+      
+      // Bind Icon Click inside Modal
+      document.getElementById(`${formHtmlId}_icon`).onclick = () => {
+          Modal.emojiPicker({
+              title: "更換圖示",
+              current: c.icon,
+              onPick: (newIcon) => {
+                  c.icon = newIcon; // Update data ref temporarily
+                  document.getElementById(`${formHtmlId}_icon`).textContent = newIcon; // Update UI
+              }
+          });
+      };
     };
   });
 

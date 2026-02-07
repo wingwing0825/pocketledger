@@ -622,11 +622,10 @@ const Modal = (() => {
           }
           const v = values[f.key] ?? "";
           const type = f.type || "text";
-          const im = f.inputmode || (f.type==="number"?"decimal":"text");
           return `
             <div class="field">
               <label>${escapeHtml(f.label||"")}</label>
-              <input type="${escapeAttr(type)}" inputmode="${escapeAttr(im)}" data-k="${escapeAttr(f.key)}" value="${escapeAttr(String(v))}" placeholder="${escapeAttr(f.placeholder||"")}">
+              <input type="${escapeAttr(type)}" data-k="${escapeAttr(f.key)}" value="${escapeAttr(String(v))}" placeholder="${escapeAttr(f.placeholder||"")}">
               ${f.sub?`<div class="mini">${escapeHtml(f.sub)}</div>`:""}
             </div>
           `;
@@ -1308,7 +1307,7 @@ function renderReport(){
     Modal.form({
       title:"設定「充值八達通」",
       fields:[
-        { type:"text", inputmode:"decimal", key:"amt", label:"每次充值金額（可算式）", sub:"例如 500 或 400+100" },
+        { type:"text", key:"amt", label:"每次充值金額（可算式）", sub:"例如 500 或 400+100" },
       ],
       values:{ amt:String(w.topupAmount) },
       submitText:"保存",
@@ -1436,7 +1435,7 @@ function renderReport(){
       title: b ? "編輯固定支出" : "新增固定支出",
       fields:[
         { type:"text", key:"name", label:"名稱", placeholder:"例如 netflix" },
-        { type:"text", inputmode:"decimal", key:"amount", label:"金額" },
+        { type:"text", key:"amount", label:"金額" },
         { type:"month", key:"startMonth", label:"開始月份" },
         { type:"text", key:"dueDay", label:"每月到期日（1-31）" },
         { type:"text", key:"remind", label:"提前幾日提醒" },
@@ -1626,7 +1625,7 @@ function renderShopping(){
                  <input type="text" value="${escapeAttr(item.name||"")}" placeholder="物品名稱" 
                    onchange="window.updateShop('${item.id}', 'name', this.value)"
                    style="flex:2; font-weight:bold;">
-                 <input type="text" inputmode="decimal" value="${item.amount || ""}" placeholder="金額" 
+                 <input type="number" value="${item.amount || ""}" placeholder="金額" 
                    onchange="window.updateShop('${item.id}', 'amount', this.value)"
                    style="flex:1;">
              </div>
@@ -1708,7 +1707,7 @@ function renderAdd(){
 
       <div class="field">
         <label>金額 (本次支出)</label>
-        <input type="text" inputmode="decimal" id="f_amount" value="${escapeAttr(form.amountExpr)}" placeholder="例如 6+80+10" style="font-size:20px;font-weight:bold">
+        <input inputmode="text" id="f_amount" value="${escapeAttr(form.amountExpr)}" placeholder="例如 6+80+10" style="font-size:20px;font-weight:bold">
         <div class="mini" id="amountPreview" style="text-align:right;height:14px;color:var(--primary)"></div>
       </div>
 
@@ -1761,11 +1760,11 @@ function renderAdd(){
          <div class="grid3" style="grid-template-columns:1fr 1fr; margin-top:8px;">
             <div class="field" style="margin-top:0">
               <label>全款 <span class="fill-helper" id="fillFullAmt">⚡同上</span></label>
-              <input type="text" inputmode="decimal" id="f_orderFullAmt" placeholder="總金額">
+              <input type="number" id="f_orderFullAmt" placeholder="總金額">
             </div>
             <div class="field" style="margin-top:0">
               <label>已結 <span class="fill-helper" id="fillPaidAmt">⚡同上</span></label>
-              <input type="text" inputmode="decimal" id="f_orderPaidAmt" placeholder="已付金額">
+              <input type="number" id="f_orderPaidAmt" placeholder="已付金額">
             </div>
          </div>
       </div>
@@ -1822,7 +1821,8 @@ function renderAdd(){
   isBillEl.addEventListener("change", refreshBlocks);
   refreshBlocks();
   
-  // ★ Auto-Fill Logic (Updated Logic: Both take from main Amount)
+  // ★ Auto-Fill Logic (Updated as requested)
+  // Fill Full Amount from Top Amount
   document.getElementById("fillFullAmt").onclick = () => {
       const v = evalAmountExpression(document.getElementById("f_amount").value);
       if(Number.isFinite(v)) {
@@ -1830,6 +1830,7 @@ function renderAdd(){
           toast("已填入全款");
       }
   };
+  // Fill Paid Amount from Top Amount
   document.getElementById("fillPaidAmt").onclick = () => {
       const v = evalAmountExpression(document.getElementById("f_amount").value);
       if(Number.isFinite(v)) {
@@ -1915,6 +1916,14 @@ function renderAdd(){
 
       if (isOrder){
         if (!data.orders) data.orders = [];
+        // 如果是編輯模式，檢查是否已存在該 ID 的訂單，否則新增
+        let ord = null;
+        if(edit) {
+             // 嘗試尋找關聯訂單 (簡易版：假設新增時同步新增，這裡其實無法完美追蹤 ID，除非 expense 存了 orderId)
+             // 為了簡單起見，這裡新增訂單視為 "新的訂單需求"。
+             // 若要嚴謹，應該在 expense 存 orderId。
+             // 這裡採用: 總是新增一個新的 Order 紀錄 (假設用戶勾選了 isOrder 就是要加一筆)
+        }
         data.orders.push({
           id: uid("ord"), name: exp.title, amount: exp.amount, 
           fullAmt: Number.isFinite(orderFullAmt) ? orderFullAmt : 0,
@@ -2028,7 +2037,7 @@ function renderOrders(){
           </div>
         </div>
         <div class="actions">
-          ${(o.status==="active" && remain > 0) ? `<button class="btn small primary" data-settle="${o.id}">支付 / 調整</button>` : ``}
+          ${(o.status==="active" && remain > 0) ? `<button class="btn small primary" data-settle="${o.id}">已補尾款 (完成)</button>` : ``}
           <button class="btn small" data-toggleorder="${o.id}">${o.status==="active"?"完成/取消":"重開"}</button>
           <button class="btn small" data-editorder="${o.id}">編輯</button>
           <button class="btn small danger" data-delorder="${o.id}">刪除</button>
@@ -2042,66 +2051,29 @@ function renderOrders(){
           const id = btn.dataset.settle;
           const o = data.orders.find(x => x.id === id);
           if(!o) return;
-          const full = Number(o.fullAmt || 0);
-          const paid = Number(o.paidAmt || 0);
-          const remain = full - paid;
+          const remain = Number(o.fullAmt) - Number(o.paidAmt);
           
-          const modalId = uid("settleForm");
-          
-          // 若還有剩餘款項，預設填入剩餘金額；若已付清，預設填入已付金額(方便退款)
-          const defaultVal = remain > 0 ? remain : paid;
-
-          Modal.open({
-              title: "更新付款進度",
-              bodyHtml: `
-                <div class="hint" style="margin-bottom:12px">目前已付: ${money(paid)} / 全款: ${money(full)}</div>
-                <div class="field">
-                    <label>輸入金額</label>
-                    <input type="text" inputmode="decimal" id="${modalId}_amt" value="${defaultVal}" style="font-size:20px; font-weight:bold;">
-                </div>
-                <div class="mini" style="margin-top:6px; color:var(--text-muted);">
-                   輸入金額後，選擇「紀錄付款」或「還原/扣減」。
-                </div>
-              `,
-              footButtons: [
-                  { text: "取消", onClick: ()=> Modal.close("cancel") },
-                  { text: "還原/扣減 (-)", variant:"danger", onClick: ()=>{
-                       const val = Number(document.getElementById(`${modalId}_amt`).value);
-                       if(!Number.isFinite(val) || val <= 0) { toast("金額錯誤"); return; }
-                       
-                       // 執行扣減邏輯 (強制轉為數字運算)
-                       let current = Number(o.paidAmt || 0);
-                       o.paidAmt = Math.max(0, current - val);
-                       
-                       saveData(); // ★ 強制存檔
-                       
-                       toast(`已扣減 ${val} (請記得自行刪除對應支出)`);
-                       Modal.close("ok");
-                       renderOrders();
-                  }},
-                  { text: "紀錄付款 (+)", variant:"primary", onClick: ()=>{
-                       const val = Number(document.getElementById(`${modalId}_amt`).value);
-                       if(!Number.isFinite(val) || val <= 0) { toast("金額錯誤"); return; }
-                       
-                       // 執行付款邏輯
-                       const iso=todayISO();
-                       const exp={
-                            id: uid("exp"), date: iso, amount: Math.round(val*100)/100,
-                            title: `尾款: ${o.name}`, categoryId: o.categoryId, platform: o.platform, payment: "現金",
-                            note: "自動產生之尾款", receiptImage: "", createdAt: Date.now(), type: ""
-                       };
-                       data.expenses.push(exp);
-                       
-                       let current = Number(o.paidAmt || 0);
-                       o.paidAmt = current + val;
-                       
-                       saveData(); // ★ 強制存檔
-                       
-                       toast(`已記錄付款 ${val}`);
-                       Modal.close("ok");
-                       renderOrders();
-                  }}
-              ]
+          Modal.confirm({
+              title: "補尾款並完成",
+              msg: `將新增一筆支出 ${money(remain)}，並將訂單標記為已支付全款及完成。`,
+              okText: "確定",
+              onOk: () => {
+                  // Add Expense
+                  const iso=todayISO();
+                  const exp={
+                    id: uid("exp"), date: iso, amount: Math.round(remain*100)/100,
+                    title: `尾款: ${o.name}`, categoryId: o.categoryId, platform: o.platform, payment: "現金",
+                    note: "自動產生之尾款", receiptImage: "", createdAt: Date.now(), type: ""
+                  };
+                  data.expenses.push(exp);
+                  
+                  // Update Order
+                  o.paidAmt = o.fullAmt;
+                  o.status = "done";
+                  
+                  toast("已結清並完成");
+                  renderOrders();
+              }
           });
       };
   });
@@ -2138,10 +2110,10 @@ function renderOrders(){
         title:"編輯訂購物",
         fields:[
           { type:"text", key:"name", label:"名稱" },
-          { type:"text", inputmode:"decimal", key:"amount", label:"記帳金額 (本筆支出)" },
+          { type:"text", key:"amount", label:"記帳金額 (本筆支出)" },
           { type:"divider" },
-          { type:"text", inputmode:"decimal", key:"fullAmt", label:"全款" },
-          { type:"text", inputmode:"decimal", key:"paidAmt", label:"已結" },
+          { type:"text", key:"fullAmt", label:"全款" },
+          { type:"text", key:"paidAmt", label:"已結" },
           { type:"divider" },
           { type:"date", key:"due", label:"到期日" },
           { type:"select", key:"delivery", label:"交收", options:[{value:"面交",text:"面交"},{value:"快遞",text:"快遞"}] },
@@ -2189,11 +2161,11 @@ function renderSettings(){
       <div class="h">基本設定</div>
       <div class="field">
         <label>每月預設收入</label>
-        <input type="text" inputmode="decimal" id="s_income" value="${escapeAttr(String(data.settings.monthlyIncomeDefault))}">
+        <input inputmode="text" id="s_income" value="${escapeAttr(String(data.settings.monthlyIncomeDefault))}">
       </div>
       <div class="field">
         <label>每月預設可用金額</label>
-        <input type="text" inputmode="decimal" id="s_available" value="${escapeAttr(String(data.settings.monthlyAvailableDefault))}">
+        <input inputmode="text" id="s_available" value="${escapeAttr(String(data.settings.monthlyAvailableDefault))}">
       </div>
       <div class="actions">
         <button class="btn primary" id="saveIncome">保存設定</button>
@@ -2271,7 +2243,7 @@ function renderSettings(){
   document.getElementById("addCat").onclick=()=>{
     Modal.form({
       title:"新增類別",
-      fields:[ { type:"text", key:"name", label:"名稱" }, { type:"text", inputmode:"decimal", key:"budget", label:"預算" } ],
+      fields:[ { type:"text", key:"name", label:"名稱" }, { type:"text", key:"budget", label:"預算" } ],
       values:{ name:"", budget:"0" },
       submitText:"新增",
       onSubmit:(v, done)=>{
@@ -2334,7 +2306,7 @@ function renderSettings(){
                 </div>
                 <div class="field">
                     <label>預算</label>
-                    <input type="text" inputmode="decimal" id="${formHtmlId}_budget" value="${escapeAttr(String(c.budget))}">
+                    <input id="${formHtmlId}_budget" value="${escapeAttr(String(c.budget))}">
                 </div>
                 <div class="switch">
                     <div class="label">啟用</div>

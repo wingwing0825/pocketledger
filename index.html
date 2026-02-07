@@ -2037,7 +2037,7 @@ function renderOrders(){
           </div>
         </div>
         <div class="actions">
-          ${(o.status==="active" && remain > 0) ? `<button class="btn small primary" data-settle="${o.id}">已補尾款 (完成)</button>` : ``}
+          ${(o.status==="active" && remain > 0) ? `<button class="btn small primary" data-settle="${o.id}">已補尾款</button>` : ``}
           <button class="btn small" data-toggleorder="${o.id}">${o.status==="active"?"完成/取消":"重開"}</button>
           <button class="btn small" data-editorder="${o.id}">編輯</button>
           <button class="btn small danger" data-delorder="${o.id}">刪除</button>
@@ -2054,8 +2054,8 @@ function renderOrders(){
           const remain = Number(o.fullAmt) - Number(o.paidAmt);
           
           Modal.confirm({
-              title: "補尾款並完成",
-              msg: `將新增一筆支出 ${money(remain)}，並將訂單標記為已支付全款及完成。`,
+              title: "補尾款",
+              msg: `將新增一筆支出 ${money(remain)}，並將訂單更新為已付全款。\n(訂單仍保持進行中)`,
               okText: "確定",
               onOk: () => {
                   // Add Expense
@@ -2069,9 +2069,9 @@ function renderOrders(){
                   
                   // Update Order
                   o.paidAmt = o.fullAmt;
-                  o.status = "done";
+                  // 注意：這裡不更改 o.status，保持 "active"
                   
-                  toast("已結清並完成");
+                  toast("已新增尾款支出");
                   renderOrders();
               }
           });

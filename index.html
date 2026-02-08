@@ -11,11 +11,11 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
-<style>
+  <style>
     :root{
       /* 現代配色系統 */
       --bg-body: #f0f2f5;
-      --primary: #4f46e5;       /* 靛藍色主調 */
+      --primary: #4f46e5;      /* 靛藍色主調 */
       --primary-light: #e0e7ff;
       --text-main: #1f2937;
       --text-muted: #6b7280;
@@ -106,20 +106,6 @@
     .btn.danger { border-color: #fecdd3; background: #fff1f2; color: #e11d48; }
     .btn.ghost { background: transparent; border-color: transparent; box-shadow: none; color: var(--text-muted); }
     .btn.small { padding: 6px 10px; font-size: 12px; border-radius: 10px; }
-
-    /* ★ 新增: 模式切換按鈕 (Segmented Control) */
-    .segment-control {
-      display: flex; background: #e5e7eb; padding: 4px; border-radius: 12px;
-      gap: 4px; align-items: center;
-    }
-    .segment-btn {
-      flex: 1; border: none; background: transparent; padding: 6px 12px;
-      border-radius: 8px; font-size: 13px; font-weight: 600;
-      color: var(--text-muted); cursor: pointer; transition: all 0.2s;
-    }
-    .segment-btn.active {
-      background: white; color: var(--primary); box-shadow: var(--shadow-sm);
-    }
 
     /* === Layout & Cards === */
     main { flex: 1; padding: 16px 16px 120px; }
@@ -374,7 +360,7 @@
     /* Img */
     .item .img { width: 100%; border-radius: 12px; margin-top: 12px; border: 1px solid var(--line); }
     
-    /* 收據摺疊樣式 */
+    /* ★ 新增: 收據摺疊樣式 */
     details.receipt-toggle {
       margin-top: 8px;
       font-size: 13px;
@@ -785,7 +771,6 @@ let state = {
   tab: "calendar",
   selectedDay: todayISO(),
   reportMonth: monthKey(todayISO()),
-  reportMode: "month", // "month" or "year"
   editingExpenseId: null,
   calendarView: "day",
 };
@@ -1152,107 +1137,54 @@ function renderCalendar(){
   attachExpenseActions();
 }
 
-
-
-
 /* =========================
-   Report (Updated: Cash Basis for Bills)
+   Report
    ========================= */
 function renderReport(){
   setTitle("統計");
-  const mode = state.reportMode || "month"; // month | year
-  const currentMonthISO = state.reportMonth; // "YYYY-MM"
-  const currentYear = currentMonthISO.split("-")[0]; // "YYYY"
-
+  const m = state.reportMonth;
   recomputeOctopusBalance();
   const w = octo();
 
-  // --- 計算邏輯 ---
-  let income = 0;
-  let available = 0;
-  let spendCash = 0;
-  let totals = new Map(); // Category ID -> Amount
-
-  // 1. 初始化類別 Map
-  for (const c of data.categories) totals.set(c.id, 0);
-
-  // ★ 修改點 1: 不再自動加上 Fixed Bill 的金額，只計算 data.expenses (真正的支出紀錄)
-  // 這樣只有當你按了「已繳」產生支出後，才會被算進來。
-
-  if (mode === "month") {
-    // === 月模式計算 ===
-    income = incomeForMonth(currentMonthISO);
-    available = availableForMonth(currentMonthISO);
-    
-    // 加總該月支出
-    const ex = expensesByMonth(currentMonthISO);
-    for (const e of ex){
-      totals.set(e.categoryId, (totals.get(e.categoryId)||0) + Number(e.amount||0));
-    }
-    
-    spendCash = sumCashOut(ex); // 只算實際支出
-
-  } else {
-    // === 年模式計算 ===
-    income = Number(data.settings.monthlyIncomeDefault||0) * 12;
-    available = Number(data.settings.monthlyAvailableDefault||0) * 12;
-
-    // 加總整年支出
-    const yearEx = data.expenses.filter(e => e.date.startsWith(currentYear));
-    for (const e of yearEx){
-      totals.set(e.categoryId, (totals.get(e.categoryId)||0) + Number(e.amount||0));
-    }
-    
-    spendCash = sumCashOut(yearEx);
-  }
-
+  const income = incomeForMonth(m);
+  const available = availableForMonth(m);
+  const ex = expensesByMonth(m);
+  const { sum: fixedSum } = fixedBillsForMonth(m);
+  const spendCash = sumCashOut(ex) + fixedSum;
+  const spendAll  = sumAll(ex) + fixedSum;
   const budgetRemain = available - spendCash;
+  const totals = totalsByCategoryForMonth(m);
 
-  // 準備類別列表資料
   const cats = enabledCategories().map(c=>{
     const used = totals.get(c.id) || 0;
-    // 如果是年模式，預算 * 12
-    let budget = getBudgetForMonthCat(currentMonthISO, c);
-    if (mode === "year") budget = Number(c.budget||0) * 12;
-
+    const budget = getBudgetForMonthCat(m, c);
     const pct = budget > 0 ? used / budget : 0;
     const remain = budget > 0 ? (budget - used) : 0;
     const over = budget > 0 && used > budget;
-    const hasOverride = (mode==="month") && (data.budgetOverrides?.[currentMonthISO]?.[c.id] !== undefined);
-    
+    const hasOverride = data.budgetOverrides?.[m]?.[c.id] !== undefined;
     return { c, used, budget, pct, remain, over, hasOverride };
   }).sort((a,b)=> b.used - a.used);
 
-  const anyWarn = (mode==="month") && data.fixedBills.some(b=>
-    b.active && (!b.startMonth || currentMonthISO>=b.startMonth) && billShouldRemindForMonth(b,currentMonthISO)
+  const anyWarn = data.fixedBills.some(b=>
+    b.active && (!b.startMonth || m>=b.startMonth) && billShouldRemindForMonth(b,m)
   );
 
-  // --- 渲染畫面 ---
+  let octCount = 1; // 暫存八達通充值次數
+
   main.innerHTML = `
     <div class="card">
       <div class="row">
         <div class="left">
-          <div class="segment-control">
-             <button class="segment-btn ${mode==='month'?'active':''}" id="btnModeMonth">月檢視</button>
-             <button class="segment-btn ${mode==='year'?'active':''}" id="btnModeYear">全年統計</button>
-          </div>
+          <div class="h">月份選擇</div>
         </div>
-        ${mode === 'month' ? `
-           <input type="month" id="monthPicker2" value="${currentMonthISO}" style="max-width:140px" />
-        ` : `
-           <div style="display:flex;align-items:center;gap:8px;">
-             <button class="btn small" id="yearPrev">◀</button>
-             <div style="font-weight:800;font-size:18px;">${currentYear}</div>
-             <button class="btn small" id="yearNext">▶</button>
-           </div>
-        `}
+        <input type="month" id="monthPicker2" value="${m}" style="max-width:160px" />
       </div>
     </div>
 
     <div class="card">
       <div class="row">
         <div class="left">
-          <div class="h">${mode==='month' ? '本月概況' : `${currentYear} 全年概況`}</div>
+          <div class="h">本月概況</div>
         </div>
         <button class="btn small" id="goSettings">設定</button>
       </div>
@@ -1260,11 +1192,11 @@ function renderReport(){
 
       <div class="grid3">
         <div class="stat">
-          <div class="k">總收入 (預估)</div>
+          <div class="k">本月收入</div>
           <div class="v">${money(income)}</div>
         </div>
         <div class="stat">
-          <div class="k">總支出 (已付)</div>
+          <div class="k">總支出(現金)</div>
           <div class="v">${money(spendCash)}</div>
         </div>
         <div class="stat">
@@ -1275,14 +1207,14 @@ function renderReport(){
 
       <div class="hr"></div>
       
-      <div class="mini">${mode==='month'?'本月':'全年'}限用：<b>${money(available)}</b> · 已用：<b class="${spendCash>available?'bad':''}">${money(spendCash)}</b></div>
+      <div class="mini">每月限用：<b>${money(available)}</b> · 已用：<b class="${spendCash>available?'bad':''}">${money(spendCash)}</b></div>
       <div class="progress">
         <div class="bar ${spendCash>available?'bad':''}" style="width:${available>0?Math.min(1,spendCash/available)*100:0}%"></div>
       </div>
     </div>
 
     <div class="card">
-      <div class="h">類別統計 (${mode==='month'?'月':'年'})</div>
+      <div class="h">類別統計</div>
       <div class="list">
         ${cats.map(r=>{
           const c=r.c;
@@ -1303,7 +1235,7 @@ function renderReport(){
                 </div>
                 <div style="text-align:right">
                   <div class="amt ${r.over?'bad':''}">${money(r.used)}</div>
-                  ${mode==='month' ? `<button class="btn small ghost" data-catdetail="${c.id}" style="margin-right:-10px">詳細</button>` : ``}
+                  <button class="btn small ghost" data-catdetail="${c.id}" style="margin-right:-10px">詳細</button>
                 </div>
               </div>
               <div class="progress" style="margin-top:8px">
@@ -1315,132 +1247,130 @@ function renderReport(){
       </div>
     </div>
 
-    ${mode === 'month' ? `
-      <div class="card ${anyWarn?'warnCard':''}">
+    <div class="card ${anyWarn?'warnCard':''}">
+      <div class="row">
+        <div class="left">
+          <div class="h">固定支出 & 八達通</div>
+        </div>
+        <button class="btn primary small" id="addBill">新增</button>
+      </div>
+      <div class="hr"></div>
+
+      <div class="item" style="background:var(--primary-light); border-color:transparent;">
         <div class="row">
           <div class="left">
-            <div class="h">固定支出 & 八達通</div>
-          </div>
-          <button class="btn primary small" id="addBill">新增</button>
-        </div>
-        <div class="hr"></div>
-
-        <div class="item" style="background:var(--primary-light); border-color:transparent;">
-          <div class="row">
-            <div class="left">
-              <div style="display:flex;align-items:center;gap:8px;">
-                <div style="font-size:18px">🚌</div>
-                <div class="title">充值八達通</div>
-              </div>
-              <div class="meta">餘額：<b class="${w.balance<0?'bad':''}">${money(w.balance)}</b></div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <div style="font-size:18px">🚌</div>
+              <div class="title">充值八達通</div>
             </div>
-          </div>
-          
-          <div class="actions" style="justify-content:space-between; align-items:center;">
-             <button class="btn small" id="editTopupSetting">設定</button>
-             <div class="stepper">
-                <button class="btn small" id="octMinus">-</button>
-                <div class="stepper-val" id="octCountDisp">1</div>
-                <button class="btn small" id="octPlus">+</button>
-                <button class="btn small primary" id="doTopup">充值</button>
-             </div>
+            <div class="meta">餘額：<b class="${w.balance<0?'bad':''}">${money(w.balance)}</b> · 每次充 ${money(w.topupAmount)}</div>
           </div>
         </div>
-
-        <div class="list" id="billList"></div>
+        
+        <div class="actions" style="justify-content:space-between; align-items:center;">
+           <button class="btn small" id="editTopupSetting">設定</button>
+           <div class="stepper">
+              <button class="btn small" id="octMinus">-</button>
+              <div class="stepper-val" id="octCountDisp">1</div>
+              <button class="btn small" id="octPlus">+</button>
+              <button class="btn small primary" id="doTopup">充值</button>
+           </div>
+        </div>
       </div>
-    ` : ``}
+
+      <div class="list" id="billList"></div>
+    </div>
   `;
 
-  // --- Event Listeners ---
-  document.getElementById("btnModeMonth").onclick = () => { state.reportMode = "month"; renderReport(); };
-  document.getElementById("btnModeYear").onclick = () => { state.reportMode = "year"; renderReport(); };
+  document.getElementById("monthPicker2").addEventListener("change",(e)=>{
+    state.reportMonth = e.target.value;
+    toast("已切換月份");
+    renderReport();
+  });
 
-  if(document.getElementById("monthPicker2")){
-    document.getElementById("monthPicker2").addEventListener("change",(e)=>{
-      state.reportMonth = e.target.value;
-      toast("已切換月份");
-      renderReport();
+  main.querySelectorAll("[data-catdetail]").forEach(btn=>{
+    btn.onclick=()=>{
+      const catId = btn.dataset.catdetail;
+      openCategoryDetailModal(m, catId);
+    };
+  });
+
+  document.getElementById("addBill").onclick = ()=> openBillEditor(null);
+
+  // Octopus Counter Logic
+  document.getElementById("octMinus").onclick = () => {
+      if(octCount > 1) octCount--;
+      document.getElementById("octCountDisp").textContent = octCount;
+  };
+  document.getElementById("octPlus").onclick = () => {
+      octCount++;
+      document.getElementById("octCountDisp").textContent = octCount;
+  };
+
+  document.getElementById("editTopupSetting").onclick=()=>{
+    Modal.form({
+      title:"設定「充值八達通」",
+      fields:[
+        { type:"text", key:"amt", label:"每次充值金額（可算式）", sub:"例如 500 或 400+100" },
+      ],
+      values:{ amt:String(w.topupAmount) },
+      submitText:"保存",
+      onSubmit:(v, done)=>{
+        const num=evalAmountExpression(v.amt);
+        if (!Number.isFinite(num) || num<=0){ toast("金額不正確"); return; }
+        octo().topupAmount = Math.round(num*100)/100;
+        toast("已更新充值金額");
+        done(); renderReport();
+      }
     });
-  }
-  if(document.getElementById("yearPrev")){
-    document.getElementById("yearPrev").onclick = () => {
-       const [y, m] = state.reportMonth.split("-");
-       state.reportMonth = `${Number(y)-1}-${m}`;
-       renderReport();
-    };
-    document.getElementById("yearNext").onclick = () => {
-       const [y, m] = state.reportMonth.split("-");
-       state.reportMonth = `${Number(y)+1}-${m}`;
-       renderReport();
-    };
-  }
-  document.getElementById("goSettings").onclick=()=>{ state.tab="settings"; renderSettings(); };
+  };
 
-  if (mode === "month") {
-    main.querySelectorAll("[data-catdetail]").forEach(btn=>{
-      btn.onclick=()=>{ openCategoryDetailModal(currentMonthISO, btn.dataset.catdetail); };
+  document.getElementById("doTopup").onclick=()=>{
+    const unitAmt = Number(octo().topupAmount||0);
+    if (!(unitAmt>0)){ toast("充值金額未設定"); return; }
+    
+    const totalAmt = unitAmt * octCount;
+
+    Modal.confirm({
+      title:"確認充值八達通",
+      msg:`將會新增一筆「充值八達通」紀錄：${money(totalAmt)} (共 ${octCount} 次)`,
+      okText:"充值",
+      cancelText:"取消",
+      onOk:()=>{
+        const iso=todayISO();
+        const exp={
+          id: uid("exp"), date: iso, amount: Math.round(totalAmt*100)/100,
+          title: `充值八達通 (x${octCount})`, categoryId: "cat_oct", platform: "線下", payment: "八達通",
+          note: "", receiptImage: "", createdAt: Date.now(), type: "octopus_topup"
+        };
+        data.expenses.push(exp);
+        state.selectedDay = iso;
+        state.reportMonth = monthKey(iso);
+        toast("已充值");
+        renderReport();
+      }
     });
+  };
 
-    let octCount = 1;
-    document.getElementById("addBill").onclick = ()=> openBillEditor(null);
-    document.getElementById("octMinus").onclick = () => { if(octCount > 1) octCount--; document.getElementById("octCountDisp").textContent = octCount; };
-    document.getElementById("octPlus").onclick = () => { octCount++; document.getElementById("octCountDisp").textContent = octCount; };
+  renderBillsList();
 
-    document.getElementById("editTopupSetting").onclick=()=>{
-      Modal.form({
-        title:"設定「充值八達通」",
-        fields:[ { type:"text", key:"amt", label:"每次充值金額" } ],
-        values:{ amt:String(w.topupAmount) },
-        submitText:"保存",
-        onSubmit:(v, done)=>{
-          const num=evalAmountExpression(v.amt);
-          if (num<=0){ toast("金額錯誤"); return; }
-          octo().topupAmount = Math.round(num*100)/100;
-          toast("已更新"); done(); renderReport();
-        }
-      });
-    };
-
-    document.getElementById("doTopup").onclick=()=>{
-      const unitAmt = Number(octo().topupAmount||0);
-      const totalAmt = unitAmt * octCount;
-      Modal.confirm({
-        title:"確認充值",
-        msg:`新增充值紀錄：${money(totalAmt)} (共 ${octCount} 次)`,
-        okText:"充值",
-        onOk:()=>{
-          const iso=todayISO();
-          data.expenses.push({
-            id: uid("exp"), date: iso, amount: Math.round(totalAmt*100)/100,
-            title: `充值八達通 (x${octCount})`, categoryId: "cat_oct", platform: "線下", payment: "八達通",
-            note: "", receiptImage: "", createdAt: Date.now(), type: "octopus_topup"
-          });
-          state.reportMonth = monthKey(iso);
-          toast("已充值"); renderReport();
-        }
-      });
-    };
-
-    renderBillsList();
-  }
-
-  // ★ 修改點 2: renderBillsList
   function renderBillsList(){
     const list=document.getElementById("billList");
-    if(!list) return;
     const bills = data.fixedBills
-      .filter(b=> !b.startMonth || currentMonthISO >= b.startMonth)
+      .filter(b=> !b.startMonth || m >= b.startMonth)
       .sort((a,b)=> (a.dueDay||0)-(b.dueDay||0));
 
-    if (!bills.length){ list.innerHTML = `<div class="hint">尚未有固定支出。</div>`; return; }
+    if (!bills.length){
+      list.innerHTML = `<div class="hint">尚未有固定支出。</div>`;
+      return;
+    }
 
     list.innerHTML = bills.map(b=>{
       const cat=catById(b.categoryId);
-      const dueISO=billDueISOForMonth(currentMonthISO, b.dueDay);
+      const dueISO=billDueISOForMonth(m, b.dueDay);
       const diff=daysDiffFromToday(dueISO);
-      const paid=!!b.lastPaidMonthByMonth?.[currentMonthISO];
-      const warn = b.active && billShouldRemindForMonth(b,currentMonthISO) && !paid;
+      const paid=!!b.lastPaidMonthByMonth?.[m];
+      const warn = b.active && billShouldRemindForMonth(b,m) && !paid;
 
      return `
       <div class="item" style="${warn?'border-color:#fde68a;background:#fffbeb':''}">
@@ -1467,98 +1397,106 @@ function renderReport(){
     `;
     }).join("");
 
-    // ★ 修改點 3: 按下「已繳」的邏輯
     list.querySelectorAll("[data-togglepaid]").forEach(btn=>{
       btn.onclick=()=>{
         const id=btn.dataset.togglepaid;
         const b=data.fixedBills.find(x=>x.id===id);
         if(!b) return;
-        
         if (!b.lastPaidMonthByMonth) b.lastPaidMonthByMonth = {};
-        const isPaid = !!b.lastPaidMonthByMonth[currentMonthISO];
-        
-        if (!isPaid) {
-            // ---> 變成已繳：新增一筆支出
-            const dueISO = billDueISOForMonth(currentMonthISO, b.dueDay);
-            data.expenses.push({
-                 id: uid("exp"),
-                 date: dueISO,
-                 amount: b.amount,
-                 title: b.name,
-                 categoryId: b.categoryId,
-                 platform: "固定設定",
-                 payment: "自動",
-                 type: "fixed_bill",
-                 relatedBillId: b.id // 記住這筆支出是來自哪個固定帳單
-            });
-            b.lastPaidMonthByMonth[currentMonthISO] = true;
-            toast("已新增支出紀錄");
-        } else {
-            // ---> 變成未繳：刪除那筆支出
-            // 找出這個月、這個帳單產生的支出
-            const idx = data.expenses.findIndex(e => 
-                e.relatedBillId === b.id && monthKey(e.date) === currentMonthISO
-            );
-            if(idx !== -1) {
-                data.expenses.splice(idx, 1);
-            }
-            delete b.lastPaidMonthByMonth[currentMonthISO];
-            toast("已移除支出紀錄");
-        }
+        const cur=!!b.lastPaidMonthByMonth[m];
+        b.lastPaidMonthByMonth[m] = !cur;
+        toast(cur ? "已改回未繳" : "已標記為已繳");
         renderReport();
       };
     });
 
-    list.querySelectorAll("[data-editbill]").forEach(btn=> btn.onclick=()=> openBillEditor(btn.dataset.editbill));
+    list.querySelectorAll("[data-editbill]").forEach(btn=>{
+      btn.onclick=()=> openBillEditor(btn.dataset.editbill);
+    });
+
     list.querySelectorAll("[data-delbill]").forEach(btn=>{
       btn.onclick=()=>{
-        Modal.confirm({ title:"刪除", msg:"確定刪除？", onOk:()=>{
-          data.fixedBills = data.fixedBills.filter(b=>b.id!==btn.dataset.delbill);
-          renderReport();
-        }});
+        const id=btn.dataset.delbill;
+        Modal.confirm({
+          title:"刪除固定支出",
+          msg:"確定刪除？",
+          okText:"刪除",
+          cancelText:"取消",
+          onOk:()=>{
+            data.fixedBills = data.fixedBills.filter(b=>b.id!==id);
+            toast("已刪除固定支出");
+            renderReport();
+          }
+        });
       };
+    });
+  }
+
+  function openBillEditor(id){
+    const cats=enabledCategories();
+    const b=id ? data.fixedBills.find(x=>x.id===id) : null;
+    Modal.form({
+      title: b ? "編輯固定支出" : "新增固定支出",
+      fields:[
+        { type:"text", key:"name", label:"名稱", placeholder:"例如 netflix" },
+        { type:"text", key:"amount", label:"金額" },
+        { type:"month", key:"startMonth", label:"開始月份" },
+        { type:"text", key:"dueDay", label:"每月到期日（1-31）" },
+        { type:"text", key:"remind", label:"提前幾日提醒" },
+        { type:"select", key:"categoryId", label:"類別", options: cats.map(c=>({value:c.id, text:`${c.icon||""} ${c.name}`})) },
+        { type:"switch", key:"active", label:"啟用" },
+      ],
+      values:{
+        name: b?.name || "",
+        amount: String(b?.amount ?? ""),
+        startMonth: b?.startMonth || monthKey(todayISO()),
+        dueDay: String(b?.dueDay ?? 5),
+        remind: String(b?.remindBeforeDays ?? 3),
+        categoryId: b?.categoryId || (cats[0]?.id||"cat_misc"),
+        active: b ? !!b.active : true,
+      },
+      submitText:"保存",
+      dangerText: b ? "刪除" : null,
+      onDanger: b ? ()=>{
+        Modal.confirm({
+          title:"刪除", msg:"確定刪除？", okText:"刪除", cancelText:"取消",
+          onOk:()=>{
+            data.fixedBills = data.fixedBills.filter(x=>x.id!==b.id);
+            toast("已刪除");
+            renderReport();
+          }
+        });
+      } : null,
+      onSubmit:(v, done)=>{
+        const name=(v.name||"").trim() || "(固定支出)";
+        const amount=evalAmountExpression(v.amount);
+        if (!Number.isFinite(amount) || amount<=0){ toast("金額不正確"); return; }
+        const start=(v.startMonth||"").trim();
+        if (!/^\d{4}-\d{2}$/.test(start)){ toast("月份格式錯誤"); return; }
+        const dueDay=clampInt(Number(v.dueDay),1,31);
+        const remind=clampInt(Number(v.remind),0,31);
+        const bill = b || { id: uid("bill"), lastPaidMonthByMonth:{} };
+        bill.name=name; bill.amount=Math.round(amount*100)/100; bill.startMonth=start;
+        bill.dueDay=dueDay; bill.remindBeforeDays=remind; bill.categoryId=v.categoryId; bill.active=!!v.active;
+        if (!bill.lastPaidMonthByMonth) bill.lastPaidMonthByMonth = {};
+        if (!b) data.fixedBills.push(bill);
+        toast("已保存");
+        done(); renderReport();
+      }
     });
   }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 function openCategoryDetailModal(yyyyMm, catId){
   const cat = catById(catId);
   const title = `${cat?.icon||"🏷️"} ${cat?.name||"類別"} · ${yyyyMm}`;
-  
-  // 1. 獲取實際支出紀錄
   const ex = expensesByMonth(yyyyMm).filter(e=>e.categoryId===catId)
     .sort((a,b)=> b.date.localeCompare(a.date) || (b.createdAt||0)-(a.createdAt||0));
-
-  // 2. 獲取固定帳單 (但排除掉已經付款的！)
   const bills = (data.fixedBills||[])
-    .filter(b=> {
-        // 基本條件：啟用中 + 類別符合 + 時間已開始
-        const basic = b.active && (b.categoryId||"cat_sub")===catId && (!b.startMonth || yyyyMm>=b.startMonth);
-        // ★ 關鍵修正：如果這個月已經標記為「已繳」(lastPaidMonthByMonth有紀錄)，就不要顯示在這裡
-        // 因為它已經存在於上面的 'ex' (實際支出) 裡面了
-        const notPaid = !b.lastPaidMonthByMonth?.[yyyyMm];
-        
-        return basic && notPaid;
-    })
+    .filter(b=> b.active && (b.categoryId||"cat_sub")===catId && (!b.startMonth || yyyyMm>=b.startMonth))
     .map(b=>({
       kind:"bill", date: billDueISOForMonth(yyyyMm, b.dueDay), title: b.name, amount: Number(b.amount||0),
-      note: `固定支出 (未繳) · ${b.dueDay}號`,
+      note: `固定支出 · ${b.dueDay}號`,
     })).sort((a,b)=> b.date.localeCompare(a.date));
 
   const items = [
@@ -1587,7 +1525,7 @@ function openCategoryDetailModal(yyyyMm, catId){
               <div class="left" style="display:flex; flex-direction:column; gap:4px; min-width:0;">
                 <div class="title" style="font-size:16px; margin:0;">
                   ${escapeHtml(it.title||"(無)")} 
-                  ${it.kind==="bill"?`<span class="tag">待繳</span>`:""}
+                  ${it.kind==="bill"?`<span class="tag">固定</span>`:""}
                 </div>
                 <div style="display:flex; flex-direction:column; gap:2px; font-size:13px; color:var(--text-muted); margin-top:2px;">
                   <div>日期：${escapeHtml(it.date)}</div>
@@ -1887,7 +1825,8 @@ function renderAdd(){
   isBillEl.addEventListener("change", refreshBlocks);
   refreshBlocks();
   
-  // ★ Auto-Fill Logic
+  // ★ Auto-Fill Logic (Updated as requested)
+  // Fill Full Amount from Top Amount
   document.getElementById("fillFullAmt").onclick = () => {
       const v = evalAmountExpression(document.getElementById("f_amount").value);
       if(Number.isFinite(v)) {
@@ -1895,6 +1834,7 @@ function renderAdd(){
           toast("已填入全款");
       }
   };
+  // Fill Paid Amount from Top Amount
   document.getElementById("fillPaidAmt").onclick = () => {
       const v = evalAmountExpression(document.getElementById("f_amount").value);
       if(Number.isFinite(v)) {
@@ -1980,6 +1920,14 @@ function renderAdd(){
 
       if (isOrder){
         if (!data.orders) data.orders = [];
+        // 如果是編輯模式，檢查是否已存在該 ID 的訂單，否則新增
+        let ord = null;
+        if(edit) {
+             // 嘗試尋找關聯訂單 (簡易版：假設新增時同步新增，這裡其實無法完美追蹤 ID，除非 expense 存了 orderId)
+             // 為了簡單起見，這裡新增訂單視為 "新的訂單需求"。
+             // 若要嚴謹，應該在 expense 存 orderId。
+             // 這裡採用: 總是新增一個新的 Order 紀錄 (假設用戶勾選了 isOrder 就是要加一筆)
+        }
         data.orders.push({
           id: uid("ord"), name: exp.title, amount: exp.amount, 
           fullAmt: Number.isFinite(orderFullAmt) ? orderFullAmt : 0,
@@ -2125,6 +2073,7 @@ function renderOrders(){
                   
                   // Update Order
                   o.paidAmt = o.fullAmt;
+                  // 注意：這裡不更改 o.status，保持 "active"
                   
                   toast("已新增尾款支出");
                   renderOrders();
@@ -2344,6 +2293,7 @@ function renderSettings(){
       const c=data.categories.find(x=>x.id===id);
       if(!c) return;
       
+      // 這裡我們提供更直觀的編輯方式，讓用戶在 Modal 內點擊按鈕來換圖示
       const formHtmlId = uid("editForm");
       
       Modal.open({
@@ -2390,8 +2340,8 @@ function renderSettings(){
               title: "更換圖示",
               current: c.icon,
               onPick: (newIcon) => {
-                  c.icon = newIcon;
-                  document.getElementById(`${formHtmlId}_icon`).textContent = newIcon;
+                  c.icon = newIcon; // Update data ref temporarily
+                  document.getElementById(`${formHtmlId}_icon`).textContent = newIcon; // Update UI
               }
           });
       };

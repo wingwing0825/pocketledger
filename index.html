@@ -107,7 +107,7 @@
     .btn.ghost { background: transparent; border-color: transparent; box-shadow: none; color: var(--text-muted); }
     .btn.small { padding: 6px 10px; font-size: 12px; border-radius: 10px; }
 
-    /* Segment Control */
+    /* ★ 新增: 模式切換按鈕 (Segmented Control) */
     .segment-control {
       display: flex; background: #e5e7eb; padding: 4px; border-radius: 12px;
       gap: 4px; align-items: center;
@@ -167,6 +167,7 @@
       padding: 16px;
       transition: background 0.2s;
     }
+    /* 完成的訂單樣式 */
     .item.done {
       background: rgba(243, 244, 246, 0.8);
       border-color: rgba(229, 231, 235, 0.8);
@@ -462,8 +463,6 @@
       </div>
     </div>
   </div>
-  
-  
 
 <script>
 /* =========================
@@ -963,158 +962,6 @@ function recomputeOctopusBalance(){
   w.balance = Math.round((top-use)*100)/100;
 }
 
-
-
-
-
-<script type="module">
-  // Import the functions you need from the SDKs you need
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
-  import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-analytics.js";
-  // TODO: Add SDKs for Firebase products that you want to use
-  // https://firebase.google.com/docs/web/setup#available-libraries
-
-  // Your web app's Firebase configuration
-  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
-  const firebaseConfig = {
-    apiKey: "AIzaSyD-UZBdF8yN1G03fjPobynCAkNZYwbQu8Q",
-    authDomain: "project-e82e6.firebaseapp.com",
-    projectId: "project-e82e6",
-    storageBucket: "project-e82e6.firebasestorage.app",
-    messagingSenderId: "544064123587",
-    appId: "1:544064123587:web:495af3d92e04f0130c6876",
-    measurementId: "G-0GR3C7NVSG"
-  };
-
- // Initialize Firebase
-  const app = initializeApp(firebaseConfig);
-  const analytics = getAnalytics(app);
-  
-    // 初始化 Firebase (加了 try catch 防止設定錯誤導致全掛)
-    let app, auth, db, provider;
-    try {
-      app = initializeApp(firebaseConfig);
-      auth = getAuth(app);
-      db = getFirestore(app);
-      provider = new GoogleAuthProvider();
-      
-      // 暴露給全局變數供下方使用
-      window.db = db;
-      window.auth = auth;
-      window.doc = doc;
-      window.setDoc = setDoc;
-      window.doLogout = () => signOut(auth);
-      
-    } catch(e) {
-      console.error("Firebase Init Error:", e);
-      alert("Firebase 設定錯誤，請檢查 index.html 中的 firebaseConfig。");
-    }
-
-    const overlay = document.getElementById("loginOverlay");
-    const loginUI = document.getElementById("loginUI");
-    const loadingUI = document.getElementById("loadingUI");
-
-    if(auth) {
-        document.getElementById("btnLoginGoogle").onclick = () => {
-           signInWithPopup(auth, provider).catch(err => alert("登入錯誤: " + err.message));
-        };
-
-        onAuthStateChanged(auth, async (user) => {
-           if(user){
-              loginUI.style.display = "none";
-              loadingUI.style.display = "block";
-              
-              await loadCloudData(user);
-              
-              overlay.classList.add("hidden");
-              window.currentUser = user;
-              window.initApp(); 
-           } else {
-              overlay.classList.remove("hidden");
-              loginUI.style.display = "block";
-              loadingUI.style.display = "none";
-              window.currentUser = null;
-           }
-        });
-    }
-
-    async function loadCloudData(user){
-       try {
-         const ref = doc(db, "users", user.uid);
-         const snap = await getDoc(ref);
-         if(snap.exists()){
-            window.data = snap.data();
-         } else {
-            // 新用戶：使用預設資料
-            window.data = structuredClone(window.DEFAULT_DATA);
-            await setDoc(ref, window.data);
-         }
-       } catch(e) {
-         alert("載入失敗 (請檢查網路): " + e.message);
-         window.data = structuredClone(window.DEFAULT_DATA);
-       }
-    }
-  </script>
-
-  <script>
-    const LS_KEY = "pocketledger_html:v5_available_budget";
-    window.LS_KEY = LS_KEY;
-    let data = null; 
-
-    // Utils
-    const pad2=(n)=>String(n).padStart(2,"0");
-    const todayISO=()=>{const d=new Date();return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;}
-    const monthKey=(iso)=>iso.slice(0,7);
-    const money=(n)=>`${Number(n||0).toLocaleString(undefined,{maximumFractionDigits:2})} HKD`;
-    const uid=(p="id")=>`${p}_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
-    const escapeHtml=(s)=>String(s||"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
-    const evalAmount=(expr)=>{ try { const v=Function('"use strict";return ('+String(expr).trim()+')')(); return Number.isFinite(Number(v))?Number(v):NaN; } catch{return NaN;} }
-
-    window.DEFAULT_DATA = {
-      settings: { currency: "HKD", monthlyIncomeDefault: 0, monthlyAvailableDefault: 0 },
-      categories: [ { id:"cat_food", name:"食物", budget:2500, icon:"🍜", enabled:true }, { id:"cat_sub", name:"訂閱", budget:600, icon:"🔁", enabled:true }, { id:"cat_oct", name:"八達通", budget:0, icon:"🚌", enabled:true }, { id:"cat_misc", name:"雜物", budget:800, icon:"📦", enabled:true } ],
-      platforms: ["線下","foodpanda","淘寶"], payments: ["現金","信用卡","八達通","PayMe"],
-      expenses: [], fixedBills: [], orders: [], shoppingList: [], wallets: { octopus: { balance:0, topupAmount:500 } }
-    };
-
-    let state = { tab: "calendar", selectedDay: todayISO(), reportMonth: monthKey(todayISO()), reportMode: "month" };
-
-    /* Cloud Save Logic */
-    let saveTimer = null;
-    function saveData(){
-       // 為了保險，同時存一份在本地
-       localStorage.setItem(LS_KEY, JSON.stringify(data));
-       
-       if(window.currentUser && window.db && window.setDoc && window.doc){
-          clearTimeout(saveTimer);
-          saveTimer = setTimeout(()=>{
-             const ref = window.doc(window.db, "users", window.currentUser.uid);
-             window.setDoc(ref, data).catch(e=>console.error("Cloud Save Error", e));
-             // toast("已同步雲端"); // Optional
-          }, 2000);
-       }
-    }
-
-    /* Init */
-    window.initApp = function(){
-       if(!data) data = structuredClone(window.DEFAULT_DATA);
-       // 補齊可能缺少的欄位
-       if(!data.expenses) data.expenses = [];
-       if(!data.fixedBills) data.fixedBills = [];
-       if(!data.orders) data.orders = [];
-       if(!data.shoppingList) data.shoppingList = [];
-       if(!data.wallets) data.wallets = { octopus: { balance:0, topupAmount:500 }};
-       
-       setTab("calendar");
-    };
-
-
-
-
-
-
-
-
 /* =========================
    Rendering shell
    ========================= */
@@ -1130,12 +977,6 @@ if (tab === "dashboard") tab = "calendar";
   });
   render();
 }
-
-
-
-
-
-
 
 function render(){
   saveData();
@@ -1679,6 +1520,22 @@ function renderReport(){
     });
   }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 function openCategoryDetailModal(yyyyMm, catId){
   const cat = catById(catId);

@@ -107,7 +107,7 @@
     .btn.ghost { background: transparent; border-color: transparent; box-shadow: none; color: var(--text-muted); }
     .btn.small { padding: 6px 10px; font-size: 12px; border-radius: 10px; }
 
-    /* ★ 新增: 模式切換按鈕 (Segmented Control) */
+    /* Segment Control */
     .segment-control {
       display: flex; background: #e5e7eb; padding: 4px; border-radius: 12px;
       gap: 4px; align-items: center;
@@ -167,7 +167,6 @@
       padding: 16px;
       transition: background 0.2s;
     }
-    /* 完成的訂單樣式 */
     .item.done {
       background: rgba(243, 244, 246, 0.8);
       border-color: rgba(229, 231, 235, 0.8);
@@ -463,6 +462,8 @@
       </div>
     </div>
   </div>
+  
+  
 
 <script>
 /* =========================
@@ -1520,22 +1521,6 @@ function renderReport(){
     });
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 function openCategoryDetailModal(yyyyMm, catId){
   const cat = catById(catId);

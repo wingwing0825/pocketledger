@@ -107,7 +107,7 @@
     .btn.ghost { background: transparent; border-color: transparent; box-shadow: none; color: var(--text-muted); }
     .btn.small { padding: 6px 10px; font-size: 12px; border-radius: 10px; }
 
-    /* ★ 新增: 模式切換按鈕 (Segmented Control) */
+    /* 模式切換按鈕 */
     .segment-control {
       display: flex; background: #e5e7eb; padding: 4px; border-radius: 12px;
       gap: 4px; align-items: center;
@@ -116,6 +116,7 @@
       flex: 1; border: none; background: transparent; padding: 6px 12px;
       border-radius: 8px; font-size: 13px; font-weight: 600;
       color: var(--text-muted); cursor: pointer; transition: all 0.2s;
+      white-space: nowrap; /* 防止文字換行 */
     }
     .segment-btn.active {
       background: white; color: var(--primary); box-shadow: var(--shadow-sm);
@@ -167,7 +168,6 @@
       padding: 16px;
       transition: background 0.2s;
     }
-    /* 完成的訂單樣式 */
     .item.done {
       background: rgba(243, 244, 246, 0.8);
       border-color: rgba(229, 231, 235, 0.8);
@@ -289,6 +289,7 @@
     
     .ok { color: var(--good); font-weight: 700; }
     .bad { color: var(--bad); font-weight: 700; }
+    .warn { color: var(--warn); font-weight: 700; }
 
     /* === Stepper === */
     .stepper {
@@ -466,7 +467,7 @@
 
 <script>
 /* =========================
-   PocketLedger
+   PocketLedger Core
    ========================= */
 
 const LS_KEY = "pocketledger_html:v5_available_budget";
@@ -534,7 +535,6 @@ function evalAmountExpression(expr){
   if (!s) return NaN;
   if (!/^[0-9+\-*/().\s]+$/.test(s)) return NaN;
   try{
-    // eslint-disable-next-line no-new-func
     const v = Function('"use strict"; return (' + s + ')')();
     const num = Number(v);
     if (!Number.isFinite(num)) return NaN;
@@ -788,6 +788,7 @@ let state = {
   reportMode: "month", // "month" or "year"
   editingExpenseId: null,
   calendarView: "day",
+  tempAddDate: null // 用於傳遞點擊「新增」時的日期
 };
 
 let data = loadData();
@@ -1053,13 +1054,14 @@ function renderCalendar(){
   main.innerHTML = `
     <div class="card">
       <div class="row">
-        <div class="left">
-          <div class="h">${m}</div>
-          <div class="sub">現金支出總覽</div>
+        <div class="left" style="flex:0 0 auto;">
+          <div class="h">日曆</div>
         </div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <button class="btn" id="toggleMonthView">${view==="month" ? "返回單日" : "整月"}</button>
-          <input type="date" id="pickDay" value="${selected}" style="max-width:140px" />
+        <div style="display:flex;gap:4px;align-items:center; flex:1; justify-content:flex-end;">
+          <button class="btn small" id="calPrev">◀</button>
+          <input type="month" id="calMonthPicker" value="${m}" style="flex:1; min-width:110px; text-align:center;" />
+          <button class="btn small" id="calNext">▶</button>
+          <button class="btn small" id="toggleMonthView">...</button>
         </div>
       </div>
 
@@ -1111,19 +1113,29 @@ function renderCalendar(){
     `}
   `;
 
-  document.getElementById("pickDay").addEventListener("change",(e)=>{
-    state.selectedDay = e.target.value;
-    state.calendarView = "day";
-    renderCalendar();
-  });
+  // === Calendar Logic Functions ===
+  const changeCalMonth = (offset) => {
+      const [y, mm] = m.split("-").map(Number);
+      // set to 1st of new month
+      const d = new Date(y, mm - 1 + offset, 1);
+      state.selectedDay = `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
+      renderCalendar();
+  };
 
-  const toggleBtn = document.getElementById("toggleMonthView");
-  if (toggleBtn){
-    toggleBtn.onclick = ()=>{
+  document.getElementById("calPrev").onclick = () => changeCalMonth(-1);
+  document.getElementById("calNext").onclick = () => changeCalMonth(1);
+
+  document.getElementById("calMonthPicker").addEventListener("change", (e)=>{
+      // When picking a month directly, set to 1st day of that month
+      state.selectedDay = `${e.target.value}-01`;
+      renderCalendar();
+  });
+  
+  // existing calendar listeners
+  document.getElementById("toggleMonthView").onclick = ()=>{
       state.calendarView = (state.calendarView==="month") ? "day" : "month";
       renderCalendar();
-    };
-  }
+  };
 
   document.querySelectorAll(".day[data-day]").forEach(el=>{
     el.addEventListener("click",()=>{
@@ -1145,6 +1157,7 @@ function renderCalendar(){
   if (goAdd2){
     goAdd2.onclick = ()=>{
       state.editingExpenseId = null;
+      state.tempAddDate = state.selectedDay; 
       setTab("add");
     };
   }
@@ -1153,10 +1166,8 @@ function renderCalendar(){
 }
 
 
-
-
 /* =========================
-   Report (Updated: Cash Basis for Bills)
+   Report (Updated for Month Nav & Yearly Detail)
    ========================= */
 function renderReport(){
   setTitle("統計");
@@ -1176,9 +1187,6 @@ function renderReport(){
   // 1. 初始化類別 Map
   for (const c of data.categories) totals.set(c.id, 0);
 
-  // ★ 修改點 1: 不再自動加上 Fixed Bill 的金額，只計算 data.expenses (真正的支出紀錄)
-  // 這樣只有當你按了「已繳」產生支出後，才會被算進來。
-
   if (mode === "month") {
     // === 月模式計算 ===
     income = incomeForMonth(currentMonthISO);
@@ -1190,7 +1198,7 @@ function renderReport(){
       totals.set(e.categoryId, (totals.get(e.categoryId)||0) + Number(e.amount||0));
     }
     
-    spendCash = sumCashOut(ex); // 只算實際支出
+    spendCash = sumCashOut(ex);
 
   } else {
     // === 年模式計算 ===
@@ -1231,14 +1239,18 @@ function renderReport(){
   main.innerHTML = `
     <div class="card">
       <div class="row">
-        <div class="left">
+        <div class="left" style="flex:0 0 auto;">
           <div class="segment-control">
              <button class="segment-btn ${mode==='month'?'active':''}" id="btnModeMonth">月檢視</button>
              <button class="segment-btn ${mode==='year'?'active':''}" id="btnModeYear">全年統計</button>
           </div>
         </div>
         ${mode === 'month' ? `
-           <input type="month" id="monthPicker2" value="${currentMonthISO}" style="max-width:140px" />
+           <div style="display:flex;align-items:center;gap:4px; flex:1; justify-content:flex-end;">
+             <button class="btn small" id="repPrev">◀</button>
+             <input type="month" id="monthPicker2" value="${currentMonthISO}" style="flex:1; min-width:110px; text-align:center;" />
+             <button class="btn small" id="repNext">▶</button>
+           </div>
         ` : `
            <div style="display:flex;align-items:center;gap:8px;">
              <button class="btn small" id="yearPrev">◀</button>
@@ -1303,7 +1315,7 @@ function renderReport(){
                 </div>
                 <div style="text-align:right">
                   <div class="amt ${r.over?'bad':''}">${money(r.used)}</div>
-                  ${mode==='month' ? `<button class="btn small ghost" data-catdetail="${c.id}" style="margin-right:-10px">詳細</button>` : ``}
+                  <button class="btn small ghost" data-catdetail="${c.id}" style="margin-right:-10px">詳細</button>
                 </div>
               </div>
               <div class="progress" style="margin-top:8px">
@@ -1356,32 +1368,42 @@ function renderReport(){
   document.getElementById("btnModeMonth").onclick = () => { state.reportMode = "month"; renderReport(); };
   document.getElementById("btnModeYear").onclick = () => { state.reportMode = "year"; renderReport(); };
 
+  // Month Picker Change
   if(document.getElementById("monthPicker2")){
     document.getElementById("monthPicker2").addEventListener("change",(e)=>{
       state.reportMonth = e.target.value;
-      toast("已切換月份");
       renderReport();
     });
   }
-  if(document.getElementById("yearPrev")){
-    document.getElementById("yearPrev").onclick = () => {
-       const [y, m] = state.reportMonth.split("-");
-       state.reportMonth = `${Number(y)-1}-${m}`;
-       renderReport();
-    };
-    document.getElementById("yearNext").onclick = () => {
-       const [y, m] = state.reportMonth.split("-");
-       state.reportMonth = `${Number(y)+1}-${m}`;
-       renderReport();
-    };
-  }
+
+  // Prev/Next Logic
+  const changeDate = (offset, type) => {
+     if (type === "year") {
+        const [y, m] = state.reportMonth.split("-");
+        state.reportMonth = `${Number(y)+offset}-${m}`;
+     } else {
+        // Month logic handles year wrap automatically
+        const [y, m] = state.reportMonth.split("-");
+        const d = new Date(Number(y), Number(m)-1 + offset, 1);
+        state.reportMonth = `${d.getFullYear()}-${pad2(d.getMonth()+1)}`;
+     }
+     renderReport();
+  };
+
+  if(document.getElementById("repPrev")) document.getElementById("repPrev").onclick = () => changeDate(-1, "month");
+  if(document.getElementById("repNext")) document.getElementById("repNext").onclick = () => changeDate(1, "month");
+  
+  if(document.getElementById("yearPrev")) document.getElementById("yearPrev").onclick = () => changeDate(-1, "year");
+  if(document.getElementById("yearNext")) document.getElementById("yearNext").onclick = () => changeDate(1, "year");
+
   document.getElementById("goSettings").onclick=()=>{ state.tab="settings"; renderSettings(); };
 
-  if (mode === "month") {
-    main.querySelectorAll("[data-catdetail]").forEach(btn=>{
-      btn.onclick=()=>{ openCategoryDetailModal(currentMonthISO, btn.dataset.catdetail); };
-    });
+  // Detail Buttons (Both Month and Year)
+  main.querySelectorAll("[data-catdetail]").forEach(btn=>{
+    btn.onclick=()=>{ openCategoryDetailModal(mode === 'month' ? currentMonthISO : currentYear, btn.dataset.catdetail, mode); };
+  });
 
+  if (mode === "month") {
     let octCount = 1;
     document.getElementById("addBill").onclick = ()=> openBillEditor(null);
     document.getElementById("octMinus").onclick = () => { if(octCount > 1) octCount--; document.getElementById("octCountDisp").textContent = octCount; };
@@ -1425,7 +1447,6 @@ function renderReport(){
     renderBillsList();
   }
 
-  // ★ 修改點 2: renderBillsList
   function renderBillsList(){
     const list=document.getElementById("billList");
     if(!list) return;
@@ -1467,7 +1488,6 @@ function renderReport(){
     `;
     }).join("");
 
-    // ★ 修改點 3: 按下「已繳」的邏輯
     list.querySelectorAll("[data-togglepaid]").forEach(btn=>{
       btn.onclick=()=>{
         const id=btn.dataset.togglepaid;
@@ -1478,7 +1498,6 @@ function renderReport(){
         const isPaid = !!b.lastPaidMonthByMonth[currentMonthISO];
         
         if (!isPaid) {
-            // ---> 變成已繳：新增一筆支出
             const dueISO = billDueISOForMonth(currentMonthISO, b.dueDay);
             data.expenses.push({
                  id: uid("exp"),
@@ -1489,13 +1508,11 @@ function renderReport(){
                  platform: "固定設定",
                  payment: "自動",
                  type: "fixed_bill",
-                 relatedBillId: b.id // 記住這筆支出是來自哪個固定帳單
+                 relatedBillId: b.id
             });
             b.lastPaidMonthByMonth[currentMonthISO] = true;
             toast("已新增支出紀錄");
         } else {
-            // ---> 變成未繳：刪除那筆支出
-            // 找出這個月、這個帳單產生的支出
             const idx = data.expenses.findIndex(e => 
                 e.relatedBillId === b.id && monthKey(e.date) === currentMonthISO
             );
@@ -1521,45 +1538,33 @@ function renderReport(){
   }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-function openCategoryDetailModal(yyyyMm, catId){
+function openCategoryDetailModal(dateKey, catId, mode){
   const cat = catById(catId);
-  const title = `${cat?.icon||"🏷️"} ${cat?.name||"類別"} · ${yyyyMm}`;
+  const title = `${cat?.icon||"🏷️"} ${cat?.name||"類別"} · ${dateKey} (${mode==='year'?'全年':'本月'})`;
   
   // 1. 獲取實際支出紀錄
-  const ex = expensesByMonth(yyyyMm).filter(e=>e.categoryId===catId)
-    .sort((a,b)=> b.date.localeCompare(a.date) || (b.createdAt||0)-(a.createdAt||0));
+  let ex = [];
+  if (mode === 'month') {
+      ex = expensesByMonth(dateKey).filter(e=>e.categoryId===catId);
+  } else {
+      ex = data.expenses.filter(e => e.date.startsWith(dateKey) && e.categoryId === catId);
+  }
+  ex.sort((a,b)=> b.date.localeCompare(a.date) || (b.createdAt||0)-(a.createdAt||0));
 
-  // 2. 獲取固定帳單 (但排除掉已經付款的！)
-  const bills = (data.fixedBills||[])
-    .filter(b=> {
-        // 基本條件：啟用中 + 類別符合 + 時間已開始
-        const basic = b.active && (b.categoryId||"cat_sub")===catId && (!b.startMonth || yyyyMm>=b.startMonth);
-        // ★ 關鍵修正：如果這個月已經標記為「已繳」(lastPaidMonthByMonth有紀錄)，就不要顯示在這裡
-        // 因為它已經存在於上面的 'ex' (實際支出) 裡面了
-        const notPaid = !b.lastPaidMonthByMonth?.[yyyyMm];
-        
-        return basic && notPaid;
-    })
-    .map(b=>({
-      kind:"bill", date: billDueISOForMonth(yyyyMm, b.dueDay), title: b.name, amount: Number(b.amount||0),
-      note: `固定支出 (未繳) · ${b.dueDay}號`,
-    })).sort((a,b)=> b.date.localeCompare(a.date));
+  // 2. 獲取固定帳單 (僅限月檢視)
+  let bills = [];
+  if (mode === 'month') {
+      bills = (data.fixedBills||[])
+        .filter(b=> {
+            const basic = b.active && (b.categoryId||"cat_sub")===catId && (!b.startMonth || dateKey>=b.startMonth);
+            const notPaid = !b.lastPaidMonthByMonth?.[dateKey];
+            return basic && notPaid;
+        })
+        .map(b=>({
+          kind:"bill", date: billDueISOForMonth(dateKey, b.dueDay), title: b.name, amount: Number(b.amount||0),
+          note: `固定支出 (未繳) · ${b.dueDay}號`,
+        })).sort((a,b)=> b.date.localeCompare(a.date));
+  }
 
   const items = [
     ...ex.map(e=>({
@@ -1573,7 +1578,7 @@ function openCategoryDetailModal(yyyyMm, catId){
     }))
   ].sort((a,b)=> b.date.localeCompare(a.date));
 
-  if (!items.length){ Modal.info(title, "本月此類別未有紀錄。"); return; }
+  if (!items.length){ Modal.info(title, "此時段未有紀錄。"); return; }
   const total = items.reduce((s,x)=> s + Number(x.amount||0), 0);
 
   Modal.open({
@@ -1626,7 +1631,6 @@ function renderShopping(){
   };
 
   const deleteItem = (id) => {
-    // 簡單的淡出效果
     const row = document.getElementById(`shop_${id}`);
     if(row) {
         row.style.transition = "all 0.3s";
@@ -1649,7 +1653,7 @@ function renderShopping(){
     const exp = {
         id: uid("exp"),
         date: item.date || todayISO(),
-        amount: Number(item.amount) || 0, // 如果沒填金額，預設0
+        amount: Number(item.amount) || 0, 
         title: item.name || "(無物品名稱)",
         categoryId: item.categoryId || (data.categories[0]?.id || "cat_misc"),
         platform: item.platform || "線下",
@@ -1743,17 +1747,24 @@ function renderShopping(){
 }
 
 /* =========================
-   Add / Edit Expense
+   Add / Edit Expense (Updated: Date & Smart Category)
    ========================= */
 function renderAdd(){
   setTitle(state.editingExpenseId ? "編輯支出" : "新增支出");
   const cats=enabledCategories();
   const defaultCat = cats[0]?.id || "";
   const edit = state.editingExpenseId ? data.expenses.find(e=>e.id===state.editingExpenseId) : null;
+  
+  // ★ 使用 tempAddDate (如果有) 否則預設今天
+  const initDate = edit?.date || state.tempAddDate || todayISO();
+  // 清空 temp，避免下次按大+號時還是舊日期
+  state.tempAddDate = null;
 
   const form = {
-    date: edit?.date || todayISO(), amountExpr: edit ? String(edit.amount ?? "") : "",
-    title: edit?.title || "", categoryId: edit?.categoryId || defaultCat,
+    date: initDate, 
+    amountExpr: edit ? String(edit.amount ?? "") : "",
+    title: edit?.title || "", 
+    categoryId: edit?.categoryId || defaultCat,
     platform: edit?.platform || (data.platforms[0]||"線下"),
     payment: edit?.payment || (data.payments[0]||"現金"),
     note: edit?.note || "", receiptImage: edit?.receiptImage || "", type: edit?.type || ""
@@ -1866,6 +1877,27 @@ function renderAdd(){
     };
   }
 
+  // ★ Smart Category Linkage: Change category -> auto select payment
+  const catSelect = document.getElementById("f_cat");
+  const paySelect = document.getElementById("f_payment");
+  catSelect.addEventListener("change", () => {
+      const selectedId = catSelect.value;
+      const cat = catById(selectedId);
+      if (cat && cat.defaultPayment && paySelect) {
+          // Check if the payment method exists in options
+          let exists = false;
+          for(let i=0; i<paySelect.options.length; i++){
+              if(paySelect.options[i].value === cat.defaultPayment) exists = true;
+          }
+          if(exists) {
+              paySelect.value = cat.defaultPayment;
+              // visual feedback (optional)
+              paySelect.style.backgroundColor = "#e0e7ff";
+              setTimeout(()=> paySelect.style.backgroundColor = "", 300);
+          }
+      }
+  });
+
   const amountInput = document.getElementById("f_amount");
   const amountPreview = document.getElementById("amountPreview");
   function refreshAmountPreview(){
@@ -1887,7 +1919,6 @@ function renderAdd(){
   isBillEl.addEventListener("change", refreshBlocks);
   refreshBlocks();
   
-  // ★ Auto-Fill Logic
   document.getElementById("fillFullAmt").onclick = () => {
       const v = evalAmountExpression(document.getElementById("f_amount").value);
       if(Number.isFinite(v)) {
@@ -2205,7 +2236,7 @@ function renderOrders(){
 }
 
 /* =========================
-   Settings
+   Settings (Updated: Default Payment)
    ========================= */
 function renderSettings(){
   setTitle("設定");
@@ -2337,7 +2368,7 @@ function renderSettings(){
       };
   });
 
-  // 編輯類別內容
+  // 編輯類別內容 (加入預設付款)
   catList.querySelectorAll("[data-editcat]").forEach(btn=>{
     btn.onclick=()=>{
       const id=btn.dataset.editcat;
@@ -2345,6 +2376,7 @@ function renderSettings(){
       if(!c) return;
       
       const formHtmlId = uid("editForm");
+      const paymentOpts = [ {value:"", text:"(無預設)"}, ...data.payments.map(p=>({value:p, text:p})) ];
       
       Modal.open({
          title: "編輯類別",
@@ -2362,6 +2394,12 @@ function renderSettings(){
                     <label>預算</label>
                     <input id="${formHtmlId}_budget" value="${escapeAttr(String(c.budget))}">
                 </div>
+                <div class="field">
+                    <label>預設付款方式 (選了類別自動填)</label>
+                    <select id="${formHtmlId}_defPay">
+                        ${paymentOpts.map(o=>`<option value="${escapeAttr(o.value)}" ${o.value===(c.defaultPayment||"")?"selected":""}>${escapeHtml(o.text)}</option>`).join("")}
+                    </select>
+                </div>
                 <div class="switch">
                     <div class="label">啟用</div>
                     <input type="checkbox" id="${formHtmlId}_enabled" ${c.enabled?'checked':''} style="width:22px;height:22px">
@@ -2374,9 +2412,12 @@ function renderSettings(){
                  const name = document.getElementById(formHtmlId+"_name").value;
                  const budget = evalAmountExpression(document.getElementById(formHtmlId+"_budget").value);
                  const enabled = document.getElementById(formHtmlId+"_enabled").checked;
+                 const defPay = document.getElementById(formHtmlId+"_defPay").value;
                  
                  if(!Number.isFinite(budget)){ toast("預算錯"); return; }
                  c.name = name; c.budget = budget; c.enabled = enabled;
+                 c.defaultPayment = defPay; // ★ Save default payment
+                 
                  toast("已保存");
                  Modal.close("ok");
                  renderSettings();
